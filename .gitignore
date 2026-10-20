@@ -1,0 +1,13 @@
+# Versión en un solo archivo (se arma con herramientas/empaquetar.py)
+dist/
+
+# Archivos del sistema y de editores
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
