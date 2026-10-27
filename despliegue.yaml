@@ -1,0 +1,33 @@
+# Publicación del sitio de Tommy Barber (blueprint).
+# Cada cambio que se une a main arma la versión optimizada (npm run build)
+# y publica la carpeta publico/ como sitio estático.
+services:
+  - type: web
+    runtime: static
+    name: tommy-barber
+    buildCommand: npm ci --include=dev && npm run build
+    staticPublishPath: ./publico
+    autoDeployTrigger: commit
+    buildFilter:
+      ignoredPaths:
+        - README.md
+        - herramientas/empaquetar.py
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: SKIP_INSTALL_DEPS
+        value: "true"
+    headers:
+      # Los archivos de assets/ llevan un hash en el nombre: el navegador puede guardarlos un año.
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
