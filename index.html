@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tommy Barber | Barbería en Quiindy</title>
-<meta name="description" content="Barbería en Quiindy, Paraguay. Cortes, degradé y barba de lunes a sábado. Reservá tu turno online.">
+<meta name="description" content="Barbería en Quiindy, Paraguay. Cortes, degradados, barba y limpieza de cutis de lunes a sábado. Reservá tu turno online.">
 <meta name="theme-color" content="#814535">
 <link rel="icon" href="img/favicon.jpg">
 <link rel="stylesheet" href="css/estilos.css">
@@ -29,7 +29,7 @@
   <div class="contenedor hero-cuerpo">
     <div class="hero-texto">
       <h1 class="pieza"><span>Tommy</span><span class="sangria">Barber</span></h1>
-      <p class="hero-bajada sombra">Barbería en Quiindy. Cortes, degradé y barba, de lunes a sábado.</p>
+      <p class="hero-bajada sombra">Barbería en Quiindy. Cortes, degradados, barba y limpieza de cutis, de lunes a sábado.</p>
       <div class="estado" aria-live="polite">
         <div class="poste" aria-hidden="true">
           <div class="poste-globo" id="poste-globo"></div>
@@ -46,6 +46,7 @@
         <a class="btn btn-claro btn-grande" href="#reservar">Reservar turno</a>
         <a class="link-blanco sombra" href="#precios">Ver precios</a>
       </div>
+      <p class="hero-turno sombra" id="hero-turno" hidden></p>
     </div>
     <div class="hero-logo">
       <span class="logo logo-poster" role="img" aria-label="Logo de Tommy Barber"></span>
@@ -58,10 +59,10 @@
   <div class="contenedor dos-col">
     <div class="col-intro">
       <h2 class="tag tag-seccion" id="t-precios">Precios</h2>
-      <p class="intro">Precios en guaraníes. Tocá «Reservar» en el servicio que querés y elegí tu horario.</p>
-      <p class="nota-suave">Extras para cualquier corte: cejas o rayitas, Gs. 5.000 cada uno.</p>
+      <p class="intro">Precios en guaraníes. Tocá «Reservar» en el servicio o combo que querés y elegí tu horario.</p>
+      <p class="nota-suave">La duración de cada servicio es aproximada.</p>
     </div>
-    <div class="col-main precios" id="lista-precios"></div>
+    <div class="col-main" id="lista-precios"></div>
   </div>
 </section>
 
@@ -72,8 +73,8 @@
       <p>Elegí el servicio, el día y la hora. Solo te mostramos los horarios que están libres.</p>
       <ul class="puntos">
         <li>Atendemos de lunes a sábado. Los domingos el local está cerrado.</li>
-        <li>Te pedimos tu WhatsApp por si tenemos que avisarte de algún cambio.</li>
-        <li>¿No podés venir? Avisanos por Instagram y liberamos el horario.</li>
+        <li>Te recordamos el turno por WhatsApp, al número que nos dejes.</li>
+        <li>¿No podés venir? Cancelalo desde Mis turnos y el horario queda libre para otra persona.</li>
       </ul>
     </div>
     <div class="reserva-caja" id="reserva"></div>
@@ -128,6 +129,7 @@
 </div>
 
 <div id="panel" hidden></div>
+<div id="modal" hidden></div>
 
 <script src="js/app.js"></script>
 </body>
