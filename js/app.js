@@ -1,7 +1,8 @@
 /* Tommy Barber: sitio para clientes, reserva de turnos, Mis turnos y panel del dueño.
    Los datos del local están al principio (SERVICIOS, HORAS, PIN_DUENO).
    No hay servidor: los turnos, la caja y el stock se guardan en el navegador (localStorage).
-   Los avisos por WhatsApp abren WhatsApp con el mensaje listo (wa.me), como en Ára. */
+   Los avisos por WhatsApp abren WhatsApp con el mensaje listo (wa.me): el dueño solo toca Enviar.
+   El dueño cambia precios y duraciones desde el panel (sección Precios). */
 (function () {
   'use strict';
 
@@ -30,6 +31,11 @@
   ];
   var SERV = {};
   SERVICIOS.forEach(function (s) { SERV[s.id] = s; });
+
+  // La lista del local tal como viene, para poder volver a ella desde el panel
+  var OFICIAL = {};
+  SERVICIOS.forEach(function (s) { OFICIAL[s.id] = { precio: s.precio, min: s.min }; });
+  var DURACIONES = [10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 75, 90, 105, 120];
 
   // Horario de atención en minutos desde la medianoche (del contestador automático):
   // 480 = 08:00, 690 = 11:30, 780 = 13:00 y 1050 = 17:30.
@@ -63,6 +69,28 @@
   var CLAVE_RESERVAS = 'tommybarber-reservas';
   var CLAVE_PANEL = 'tommybarber-panel';
   var VERSION_DATOS = 2;
+  var CLAVE_PRECIOS = 'tommybarber-precios';
+
+  // Precios y duraciones que el dueño cambió desde el panel (se guardan en el navegador)
+  function cargarPrecios() {
+    var g = leerJSON(CLAVE_PRECIOS, null);
+    var cambios = g && g.cambios && typeof g.cambios === 'object' ? g.cambios : {};
+    SERVICIOS.forEach(function (s) {
+      var o = OFICIAL[s.id];
+      var c = cambios[s.id];
+      s.precio = c && entero(c.precio) > 0 ? entero(c.precio) : o.precio;
+      s.min = c && DURACIONES.indexOf(+c.min) >= 0 ? +c.min : o.min;
+    });
+    return { historial: g && Array.isArray(g.historial) ? g.historial.slice(-40) : [] };
+  }
+  function guardarPrecios() {
+    var cambios = {};
+    SERVICIOS.forEach(function (s) {
+      if (s.precio !== OFICIAL[s.id].precio || s.min !== OFICIAL[s.id].min) cambios[s.id] = { precio: s.precio, min: s.min };
+    });
+    guardarJSON(CLAVE_PRECIOS, { version: 1, cambios: cambios, historial: PRECIOS.historial.slice(-40) });
+  }
+  var PRECIOS = cargarPrecios();
 
   /* ===================== Utilidades ===================== */
   function pad(n) { return String(n).padStart(2, '0'); }
@@ -226,7 +254,7 @@
   }
   var ES_ANDROID = /Android/i.test(navigator.userAgent || '');
   function waLink(wa, texto) { return 'https://wa.me/' + wa + '?text=' + encodeURIComponent(texto); }
-  // En Android abre la app de WhatsApp directo y, si no está, va a wa.me (igual que en Ára).
+  // En Android abre la app de WhatsApp directo y, si no está instalada, va a wa.me.
   function waAppLink(wa, texto) {
     return 'intent://send/?phone=' + wa + '&text=' + encodeURIComponent(texto) +
       '#Intent;scheme=whatsapp;S.browser_fallback_url=' + encodeURIComponent(waLink(wa, texto)) + ';end';
@@ -256,6 +284,9 @@
     return {
       id: String(r.id || codigo), codigo: codigo, servicio: r.servicio, fecha: String(r.fecha), min: min,
       cliente: String(r.cliente || 'Cliente'), tel: String(r.tel || ''), nota: String(r.nota || ''),
+      // Precio y duración con que se reservó: no cambian si después el dueño cambia la lista
+      precio: +r.precio > 0 ? +r.precio : SERV[r.servicio].precio,
+      dur: +r.dur > 0 ? +r.dur : SERV[r.servicio].min,
       estado: ['confirmado', 'atendido', 'novino', 'cancelado'].indexOf(r.estado) >= 0 ? r.estado : 'confirmado',
       medio: r.medio || '', canceladoPor: r.canceladoPor || '', canceladoEn: +r.canceladoEn || 0,
       recordadoEn: +r.recordadoEn || 0, avisadoEn: +r.avisadoEn || 0, creadoEn: +r.creadoEn || 0,
@@ -277,7 +308,7 @@
     var ocup = {};
     lista.forEach(function (t) {
       if (t.fecha !== clave || t.estado === 'cancelado') return;
-      for (var j = 0; j < bloques(SERV[t.servicio].min); j++) ocup[t.min + j * PASO] = true;
+      for (var j = 0; j < bloques(t.dur); j++) ocup[t.min + j * PASO] = true;
     });
     return ocup;
   }
@@ -383,7 +414,7 @@
       } else if (fin <= h.min) {
         t.estado = 'atendido';
         t.medio = MEDIOS_EJ[i % MEDIOS_EJ.length];
-        nuevoMov(d, { fecha: h.clave, min: fin, tipo: 'entrada', cat: 'servicio', concepto: nombreServicio(s) + ', ' + t.cliente, monto: s.precio, medio: t.medio, turno: t.id });
+        nuevoMov(d, { fecha: h.clave, min: fin, tipo: 'entrada', cat: 'servicio', concepto: nombreServicio(s) + ', ' + t.cliente, monto: t.precio, medio: t.medio, turno: t.id });
       }
       if (i % 2 === 0) t.recordadoEn = msDe(sumarDias(h.clave, -1), 1080 + i * 3);
       hechos.push(t);
@@ -659,7 +690,7 @@
         '<p class="rv-jajotopata">¡Jajotopata!</p>' +
         '<p class="rv-confirmado condensada" id="rv-foco" tabindex="-1">Turno confirmado</p>' +
         '<dl><dt>Servicio</dt><dd>' + esc(nombreServicio(s)) + '</dd><dt>Día</dt><dd>' + esc(cap(diaLargo(t.fecha))) + '</dd><dt>Hora</dt><dd>' + hhmm(t.min) + '</dd>' +
-        '<dt>A nombre de</dt><dd>' + esc(t.cliente) + '</dd><dt>Precio</dt><dd>' + gs(s.precio) + '</dd><dt>Código</dt><dd>' + esc(t.codigo) + '</dd></dl>' +
+        '<dt>A nombre de</dt><dd>' + esc(t.cliente) + '</dd><dt>Precio</dt><dd>' + gs(t.precio) + '</dd><dt>Código</dt><dd>' + esc(t.codigo) + '</dd></dl>' +
         '<div class="rv-corte" aria-hidden="true"></div>' +
         '<p class="rv-ticket-nota">Te esperamos en ' + DIRECCION + '. Te vamos a recordar el turno por WhatsApp al ' + esc(tel.lindo || t.tel) + '.</p>' +
         '<p class="rv-ticket-nota">Lo encontrás en Mis turnos: desde ahí lo podés cancelar si no podés venir.</p>' +
@@ -678,7 +709,7 @@
     else if (!activo) estado = 'Este turno ya empezó y no se puede cancelar.';
     return '<li class="mt-item' + (t.estado === 'cancelado' ? ' cancelado' : '') + '">' +
       '<p class="mt-cuando condensada">' + esc(cap(cuandoTurno(t.fecha, t.min, false))) + '</p>' +
-      '<p class="mt-que">' + esc(nombreServicio(s)) + ', ' + gs(s.precio) + '</p>' +
+      '<p class="mt-que">' + esc(nombreServicio(s)) + ', ' + gs(t.precio) + '</p>' +
       '<p class="mt-codigo">Código ' + esc(t.codigo) + '</p>' +
       (estado ? '<p class="mt-estado">' + esc(estado) + '</p>' : '') +
       (activo ? (R.cancelando === t.id ? confirmacionCancelar(t) : '<button type="button" class="link-btn link-rojo" data-accion="cancelar-mio" data-id="' + esc(t.id) + '" data-foco="cancelar-' + esc(t.id) + '" style="padding-left:0">Cancelar turno</button>') : '') +
@@ -766,7 +797,7 @@
       return;
     }
     var codigo = nuevoCodigo();
-    var t = normalizarTurno({ id: codigo, codigo: codigo, servicio: s.id, fecha: dia.clave, min: m, cliente: R.nombre.trim(), tel: telInfo(R.tel).lindo, nota: R.nota.trim(), creadoEn: Date.now() });
+    var t = normalizarTurno({ id: codigo, codigo: codigo, servicio: s.id, fecha: dia.clave, min: m, precio: s.precio, dur: s.min, cliente: R.nombre.trim(), tel: telInfo(R.tel).lindo, nota: R.nota.trim(), creadoEn: Date.now() });
     misReservas.push(t);
     guardarReservas();
     R.ultimo = codigo; R.paso = 4; R.hora = null; R.diaIdx = null; R.aviso = ''; R.cancelando = null;
@@ -856,10 +887,11 @@
     turnos: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     caja: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>',
     stock: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>',
+    precios: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>',
     chat: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z"/></svg>'
   };
   var DIENTES = '0,0 ' + Array.from({ length: 25 }, function (_, i) { return (i * 12 + 6) + ',10 ' + (i * 12 + 12) + ',0'; }).join(' ');
-  var TITULOS = { hoy: 'Hoy', turnos: 'Turnos', caja: 'Caja', stock: 'Stock' };
+  var TITULOS = { hoy: 'Hoy', turnos: 'Turnos', caja: 'Caja', stock: 'Stock', precios: 'Precios' };
   var NOMBRE_ESTADO = { confirmado: 'Confirmado', silla: 'En la silla', atendido: 'Cobrado', novino: 'No vino', cancelado: 'Cancelado' };
   var ultimaSemana = [];
 
@@ -876,6 +908,9 @@
     accionProd: null,         // { id, tipo: 'usar' | 'vender' | 'comprar' | 'editar' | 'eliminar', … }
     avisoStock: '',
     barra: null,
+    borrador: {},             // precios y duraciones que el dueño está cambiando, antes de guardar
+    avisoPrecios: '',
+    restablecer: false,
     reiniciando: false,
     preview: null             // mensaje de WhatsApp de un turno de ejemplo
   };
@@ -908,7 +943,7 @@
     var antes = t.estado === 'confirmado' && !empezo(t, h);
     var enCurso = t.estado === 'confirmado' && empezo(t, h);
     var nombre = esc(primerNombre(t.cliente));
-    var det = esc(nombreServicio(s)) + ', ' + gs(s.precio);
+    var det = esc(nombreServicio(s)) + ', ' + gs(t.precio);
     if (t.estado === 'atendido' && t.medio) det += '. Pagó ' + (COMO_PAGO[t.medio] || esc(t.medio));
     var extra = [];
     if (t.tel) extra.push('WhatsApp ' + esc(tel.lindo || t.tel));
@@ -1452,6 +1487,154 @@
     return true;
   }
 
+  /* ----- Precios ----- */
+  function cambiosPendientes() {
+    var lista = [];
+    SERVICIOS.forEach(function (s) {
+      var b = P.borrador[s.id];
+      if (!b) return;
+      var precio = b.precio != null ? entero(b.precio) : s.precio;
+      var min = b.min != null ? +b.min : s.min;
+      if (precio !== s.precio || min !== s.min) lista.push({ s: s, precio: precio, min: min });
+    });
+    return lista;
+  }
+  function errorPrecios() {
+    var mal = SERVICIOS.filter(function (s) { var b = P.borrador[s.id]; return b && b.precio != null && !(entero(b.precio) > 0); });
+    return mal.length ? 'Falta el precio de ' + listaY(mal.map(function (s) { return s.nombre; })) + '.' : '';
+  }
+  function textoBarra(pend, err) {
+    return err || (pend.length === 1 ? '1 servicio con cambios sin guardar.' : pend.length + ' servicios con cambios sin guardar.');
+  }
+
+  function filaPrecioPanel(s) {
+    var b = P.borrador[s.id] || {};
+    var precioTxt = b.precio != null ? b.precio : String(s.precio);
+    var min = b.min != null ? +b.min : s.min;
+    var cambioP = b.precio != null && entero(b.precio) !== s.precio;
+    var cambioM = min !== s.min;
+    var opciones = DURACIONES.indexOf(min) >= 0 ? DURACIONES : DURACIONES.concat([min]);
+    return '<li class="pr-fila' + (cambioP || cambioM ? ' cambiada' : '') + '" id="pr-fila-' + s.id + '">' +
+      '<div class="pr-nombre"><p class="pr-titulo">' + esc(s.nombre) + '</p>' + (s.grupo === 'combo' ? '<p class="pr-incluye">' + esc(s.incluye) + '</p>' : '') + '</div>' +
+      '<div class="pr-campo"><label for="pr-precio-' + s.id + '">Precio</label>' +
+        '<div class="campo-gs"><span aria-hidden="true">Gs.</span><input class="campo" id="pr-precio-' + s.id + '" type="text" inputmode="numeric" data-precio="' + s.id + '" value="' + (precioTxt ? miles(precioTxt) : '') + '"></div>' +
+        '<p class="pr-antes" id="pr-antes-p-' + s.id + '"' + (cambioP ? '' : ' hidden') + '>Antes: ' + gs(s.precio) + '</p></div>' +
+      '<div class="pr-campo"><label for="pr-min-' + s.id + '">Duración</label>' +
+        '<select class="campo" id="pr-min-' + s.id + '" data-duracion="' + s.id + '">' +
+          opciones.map(function (d) { return '<option value="' + d + '"' + (d === min ? ' selected' : '') + '>' + durTxt(d) + '</option>'; }).join('') + '</select>' +
+        '<p class="pr-antes" id="pr-antes-m-' + s.id + '"' + (cambioM ? '' : ' hidden') + '>Antes: ' + durTxt(s.min) + '</p></div>' +
+    '</li>';
+  }
+
+  function textoCambioPrecio(c) {
+    var cuanto = c.campo === 'precio'
+      ? 'precio de ' + gs(c.antes) + ' a ' + gs(c.despues)
+      : 'duración de ' + durTxt(c.antes) + ' a ' + durTxt(c.despues);
+    return (c.lista ? 'Lista original. ' : '') + c.nombre + ': ' + cuanto;
+  }
+  function difCambioPrecio(c) {
+    var d = c.despues - c.antes;
+    if (!d) return '';
+    return (d > 0 ? '+' : '−') + (c.campo === 'precio' ? miles(Math.abs(d)) : Math.abs(d) + ' min');
+  }
+
+  function plantillaPrecios() {
+    var pend = cambiosPendientes();
+    var err = errorPrecios();
+    var difiere = SERVICIOS.some(function (s) { return s.precio !== OFICIAL[s.id].precio || s.min !== OFICIAL[s.id].min; });
+    var hist = PRECIOS.historial.slice().reverse().slice(0, 12);
+    var grupo = function (g) { return SERVICIOS.filter(function (s) { return s.grupo === g; }).map(filaPrecioPanel).join(''); };
+    var restablecer = '';
+    if (difiere) {
+      restablecer = P.restablecer
+        ? '<div class="pr-confirmar" role="group" aria-labelledby="pr-conf-t"><p id="pr-conf-t">Vuelven los precios y las duraciones de la lista del local (noviembre de 2026). Los turnos ya reservados no cambian.</p>' +
+          '<div class="prod-form-acciones"><button type="button" class="btn btn-rojo btn-mini" data-accion="precios-restablecer-si" data-foco="precios-restablecer-si">Volver a la lista original</button>' +
+          '<button type="button" class="link-btn" data-accion="precios-restablecer-no" data-foco="precios-restablecer-no">Cancelar</button></div></div>'
+        : '<button type="button" class="link-btn" data-accion="precios-restablecer" data-foco="precios-restablecer" style="padding-left:0">Volver a la lista original del local</button>';
+    }
+    return '<p class="turnos-intro" style="margin-top:0">Cambiá el precio o la duración y tocá «Guardar cambios». El sitio se actualiza enseguida; los turnos ya reservados mantienen su precio y su duración.</p>' +
+      (P.avisoPrecios ? '<p class="aviso-ok" role="status">' + esc(P.avisoPrecios) + '</p>' : '') +
+      '<section class="pr-grupo" aria-labelledby="pr-servicios"><h2 class="pa-h3" id="pr-servicios">Servicios</h2><ol class="lista">' + grupo('servicio') + '</ol></section>' +
+      '<section class="pr-grupo" aria-labelledby="pr-combos"><h2 class="pa-h3" id="pr-combos">Combos</h2><ol class="lista">' + grupo('combo') + '</ol></section>' +
+      '<div class="pr-barra" id="pr-barra"' + (pend.length || err ? '' : ' hidden') + '><p id="pr-barra-txt" aria-live="polite">' + esc(textoBarra(pend, err)) + '</p>' +
+        '<div class="pr-barra-botones"><button type="button" class="btn btn-rojo btn-mini" id="pr-guardar" data-accion="precios-guardar" data-foco="precios-guardar"' + (pend.length && !err ? '' : ' disabled') + '>Guardar cambios</button>' +
+        '<button type="button" class="btn btn-linea btn-mini" data-accion="precios-descartar" data-foco="precios-descartar">Descartar</button></div></div>' +
+      '<section class="pr-otros" aria-labelledby="pr-hist">' + restablecer +
+        '<h2 class="pa-h3" id="pr-hist">Últimos cambios</h2>' +
+        (hist.length ? '<ol class="smov-lista">' + hist.map(function (c) {
+          return '<li><span class="smov-cuando">' + cuandoCorto(c.ts) + '</span><span class="smov-que">' + esc(textoCambioPrecio(c)) + '</span><span class="smov-cant">' + difCambioPrecio(c) + '</span></li>';
+        }).join('') + '</ol>' : '<p class="suave" style="margin:0">Todavía no cambiaste ningún precio.</p>') +
+      '</section>';
+  }
+
+  function guardarCambiosPrecios() {
+    var pend = cambiosPendientes();
+    if (errorPrecios() || !pend.length) return false;
+    var ts = Date.now();
+    pend.forEach(function (c) {
+      var s = c.s;
+      if (c.precio !== s.precio) {
+        PRECIOS.historial.push({ ts: ts, id: s.id, nombre: s.nombre, campo: 'precio', antes: s.precio, despues: c.precio });
+        s.precio = c.precio;
+      }
+      if (c.min !== s.min) {
+        PRECIOS.historial.push({ ts: ts, id: s.id, nombre: s.nombre, campo: 'min', antes: s.min, despues: c.min });
+        s.min = c.min;
+      }
+    });
+    guardarPrecios();
+    P.borrador = {};
+    P.avisoPrecios = (pend.length === 1 ? 'Guardaste el cambio de ' + pend[0].s.nombre : 'Guardaste los cambios de ' + plural(pend.length, 'servicio', 'servicios')) + '. Ya se ven en el sitio.';
+    renderPrecios();
+    renderReserva();
+    return true;
+  }
+
+  function restablecerPrecios() {
+    var ts = Date.now();
+    SERVICIOS.forEach(function (s) {
+      var o = OFICIAL[s.id];
+      if (s.precio !== o.precio) {
+        PRECIOS.historial.push({ ts: ts, id: s.id, nombre: s.nombre, campo: 'precio', antes: s.precio, despues: o.precio, lista: true });
+        s.precio = o.precio;
+      }
+      if (s.min !== o.min) {
+        PRECIOS.historial.push({ ts: ts, id: s.id, nombre: s.nombre, campo: 'min', antes: s.min, despues: o.min, lista: true });
+        s.min = o.min;
+      }
+    });
+    guardarPrecios();
+    P.borrador = {};
+    P.restablecer = false;
+    P.avisoPrecios = 'Volviste a los precios y las duraciones de la lista original. Ya se ven en el sitio.';
+    renderPrecios();
+    renderReserva();
+  }
+
+  // Mientras el dueño escribe: marca la fila cambiada y actualiza la barra de guardar, sin redibujar
+  function actualizarPrecios(id) {
+    var s = SERV[id];
+    if (s) {
+      var b = P.borrador[id] || {};
+      var cambioP = b.precio != null && entero(b.precio) !== s.precio;
+      var cambioM = b.min != null && +b.min !== s.min;
+      var fila = document.getElementById('pr-fila-' + id);
+      if (fila) fila.classList.toggle('cambiada', cambioP || cambioM);
+      var ap = document.getElementById('pr-antes-p-' + id);
+      if (ap) ap.hidden = !cambioP;
+      var am = document.getElementById('pr-antes-m-' + id);
+      if (am) am.hidden = !cambioM;
+    }
+    var pend = cambiosPendientes();
+    var err = errorPrecios();
+    var barra = document.getElementById('pr-barra');
+    if (barra) barra.hidden = !(pend.length || err);
+    var t = document.getElementById('pr-barra-txt');
+    if (t) t.textContent = textoBarra(pend, err);
+    var g = document.getElementById('pr-guardar');
+    if (g) g.disabled = !(pend.length && !err);
+  }
+
   /* ----- Acceso y armado del panel ----- */
   function plantillaAcceso() {
     var teclas = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'Borrar'].map(function (k) {
@@ -1478,16 +1661,17 @@
     } else {
       var h = ahoraPY();
       var est = estadoLocal(h);
-      var nav = ['hoy', 'turnos', 'caja', 'stock'].map(function (k) {
+      var nav = ['hoy', 'turnos', 'caja', 'stock', 'precios'].map(function (k) {
         return '<button type="button" data-accion="vista" data-v="' + k + '" data-foco="v-' + k + '"' + (P.vista === k ? ' aria-current="page"' : '') + '>' + ICONOS[k] + TITULOS[k] + '</button>';
       }).join('');
-      var cuerpo = P.vista === 'turnos' ? plantillaTurnos(h) : (P.vista === 'caja' ? plantillaCaja(h) : (P.vista === 'stock' ? plantillaStock() : plantillaHoy(h)));
+      var plantillas = { hoy: plantillaHoy, turnos: plantillaTurnos, caja: plantillaCaja, stock: plantillaStock, precios: plantillaPrecios };
+      var cuerpo = (plantillas[P.vista] || plantillaHoy)(h);
       cont.innerHTML = '<div class="pa">' +
         '<aside class="pa-aside"><div class="pa-marca"><span class="logo logo-56" aria-hidden="true"></span><div><p class="pa-marca-nombre condensada">Tommy Barber</p><p class="pa-marca-sub">Panel del dueño</p></div></div>' +
           '<nav class="pa-nav" aria-label="Secciones del panel">' + nav + '</nav>' +
           '<div class="pa-aside-pie"><a href="#inicio">Ver el sitio</a><button type="button" data-accion="salir">Salir</button>' +
             (P.reiniciando
-              ? '<div class="pa-reinicio" role="group" aria-labelledby="pa-reinicio-t"><p id="pa-reinicio-t">Vuelven los datos de ejemplo de la agenda, la caja y el stock. Los turnos reservados en el sitio no se tocan.</p>' +
+              ? '<div class="pa-reinicio" role="group" aria-labelledby="pa-reinicio-t"><p id="pa-reinicio-t">Vuelven los datos de ejemplo de la agenda, la caja y el stock. Los precios y los turnos reservados en el sitio no se tocan.</p>' +
                 '<div class="pa-reinicio-botones"><button type="button" class="btn btn-claro btn-mini" data-accion="reiniciar-si" data-foco="reiniciar-si">Reiniciar</button><button type="button" data-accion="reiniciar-no" data-foco="reiniciar">Cancelar</button></div></div>'
               : '<button type="button" data-accion="reiniciar" data-foco="reiniciar">Reiniciar datos de ejemplo</button>') +
           '</div></aside>' +
@@ -1523,7 +1707,7 @@
     var s = SERV[t.servicio];
     t.estado = 'atendido';
     t.medio = medio;
-    registrarCaja({ tipo: 'entrada', cat: 'servicio', concepto: nombreServicio(s) + ', ' + t.cliente, monto: s.precio, medio: medio, turno: t.id });
+    registrarCaja({ tipo: 'entrada', cat: 'servicio', concepto: nombreServicio(s) + ', ' + t.cliente, monto: t.precio, medio: medio, turno: t.id });
     guardarTurno(t);
     guardarDatos();
     P.abierto = null;
@@ -1631,7 +1815,7 @@
     if (a === 'tecla') { tocarTecla(b.getAttribute('data-k')); return; }
     if (a === 'barra') { marcarBarra(+b.getAttribute('data-barra')); return; }
     if (a === 'vista') {
-      P.vista = b.getAttribute('data-v'); P.abierto = null; P.accionProd = null; P.avisoCaja = ''; P.avisoStock = '';
+      P.vista = b.getAttribute('data-v'); P.abierto = null; P.accionProd = null; P.avisoCaja = ''; P.avisoStock = ''; P.avisoPrecios = ''; P.restablecer = false;
       renderPanel('v-' + P.vista);
       var main = document.getElementById('pa-main');
       if (main && main.getBoundingClientRect().top < 0) main.scrollIntoView({ block: 'start' });
@@ -1682,6 +1866,11 @@
       else setTimeout(function () { renderPanel(focoWa); }, 300); // deja que se abra WhatsApp antes de redibujar
       return;
     }
+    if (a === 'precios-guardar') { if (guardarCambiosPrecios()) renderPanel('pa-titulo'); return; }
+    if (a === 'precios-descartar') { P.borrador = {}; P.avisoPrecios = ''; renderPanel('v-precios'); return; }
+    if (a === 'precios-restablecer') { P.restablecer = true; renderPanel('precios-restablecer-si'); return; }
+    if (a === 'precios-restablecer-no') { P.restablecer = false; renderPanel('precios-restablecer'); return; }
+    if (a === 'precios-restablecer-si') { restablecerPrecios(); renderPanel('pa-titulo'); return; }
     if (a === 'filtro-turnos') { P.filtroTurnos = b.getAttribute('data-f'); P.abierto = null; renderPanel(); return; }
     if (a === 'periodo') { P.periodo = b.getAttribute('data-p'); renderPanel(); return; }
     if (a === 'tipo') { P.form.tipo = b.getAttribute('data-t'); renderPanel(); return; }
@@ -1734,11 +1923,25 @@
   }
   panelEl.addEventListener('input', function (e) {
     var el = e.target;
+    if (el.hasAttribute('data-precio')) {
+      var idp = el.getAttribute('data-precio');
+      var val = el.value.replace(/\D/g, '').slice(0, 8);
+      el.value = val ? miles(val) : '';
+      P.borrador[idp] = Object.assign({}, P.borrador[idp], { precio: val });
+      actualizarPrecios(idp);
+      return;
+    }
     if (el.tagName === 'SELECT' || el.type === 'checkbox') return;
     if (guardarCampo(el)) actualizarFormularios();
   });
   panelEl.addEventListener('change', function (e) {
     var el = e.target;
+    if (el.hasAttribute('data-duracion')) {
+      var idd = el.getAttribute('data-duracion');
+      P.borrador[idd] = Object.assign({}, P.borrador[idd], { min: el.value });
+      actualizarPrecios(idd);
+      return;
+    }
     if (el.tagName !== 'SELECT' && el.type !== 'checkbox') return;
     if (!guardarCampo(el)) return;
     if (el.id === 'np-compra' || el.id === 'np-tipo') renderPanel(el.id);
@@ -1772,6 +1975,11 @@
       if (!panelEl.hidden && P.acceso) renderPanel();
     } else if (e.key === CLAVE_PANEL) {
       D = cargarDatos();
+      if (!panelEl.hidden && P.acceso) renderPanel();
+    } else if (e.key === CLAVE_PRECIOS) {
+      PRECIOS = cargarPrecios();
+      renderPrecios();
+      renderReserva();
       if (!panelEl.hidden && P.acceso) renderPanel();
     }
   });
