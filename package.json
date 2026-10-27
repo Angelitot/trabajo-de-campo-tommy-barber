@@ -1,0 +1,16 @@
+{
+  "name": "trabajo-de-campo-tommy-barber",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sitio de Tommy Barber: arma la versión optimizada para publicar",
+  "scripts": {
+    "build": "node herramientas/publicar.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "sharp": "0.35.5"
+  },
+  "engines": {
+    "node": ">=20.9"
+  }
+}
