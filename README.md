@@ -10,8 +10,9 @@ Trabajo de campo: diseño web para **Tommy Barber**, barbería de Quiindy (Const
   - **Turnos:** los turnos de los próximos días, con recordatorio por WhatsApp, cancelación y aviso al cliente.
   - **Caja:** lo que entra, los gastos y la ganancia de hoy, la semana o el mes.
   - **Stock:** insumos y productos para vender; el dueño los carga, resta lo que usa o vende y suma lo que compra.
+  - **Precios:** el dueño cambia el precio y la duración de cada servicio o combo, o vuelve a la lista original del local.
 
-Es un prototipo que funciona en el navegador, sin servidor: los turnos, la caja y el stock se guardan en el navegador (localStorage). Los avisos por WhatsApp abren WhatsApp con el mensaje listo (`wa.me`), igual que en Ára: el dueño solo toca Enviar.
+Es un prototipo que funciona en el navegador, sin servidor: los turnos, la caja, el stock y los precios se guardan en el navegador (localStorage). Los avisos por WhatsApp abren WhatsApp con el mensaje listo (`wa.me`): el dueño solo toca Enviar.
 
 ## Cómo abrirlo
 
@@ -26,7 +27,8 @@ Es un prototipo que funciona en el navegador, sin servidor: los turnos, la caja 
 3. Entrá al panel y abrí **Turnos**: tocá **Recordar por WhatsApp** en tu turno y se abre WhatsApp con el recordatorio para tu número.
 4. Cancelalo desde el panel: el sistema ofrece **Avisar por WhatsApp** con el mensaje de cancelación, y en **Mis turnos** dice que la barbería lo canceló.
 5. En **Stock**, cargá un insumo nuevo, usá uno y registrá una compra con lo que pagaste: el gasto aparece en **Caja**.
-6. Al terminar, **Reiniciar datos de ejemplo** (abajo del menú del panel) vuelve la agenda, la caja y el stock al principio.
+6. En **Precios**, cambiá el precio de un corte y guardá: el sitio lo muestra enseguida. Los turnos ya reservados mantienen el precio con que se reservaron.
+7. Al terminar, **Reiniciar datos de ejemplo** (abajo del menú del panel) vuelve la agenda, la caja y el stock al principio, y en **Precios** está **Volver a la lista original del local**.
 
 Los turnos con números del tipo `0981 000 …` son de ejemplo: en esos, «Recordar» muestra cómo quedaría el mensaje en vez de abrir WhatsApp.
 
@@ -45,7 +47,7 @@ Los turnos con números del tipo `0981 000 …` son de ejemplo: en esos, «Recor
 
 Al principio de `js/app.js`:
 
-- `SERVICIOS`: nombre, grupo (servicio o combo), qué incluye cada combo, duración en minutos y precio en guaraníes.
+- `SERVICIOS`: la lista original del local (nombre, grupo, qué incluye cada combo, duración en minutos y precio en guaraníes). El dueño cambia precios y duraciones desde el panel, sin tocar el código.
 - `HORAS`: horario de atención de cada día, en minutos desde la medianoche (480 son las 08:00 y 1050 las 17:30).
 - `PIN_DUENO`: el PIN del panel.
 - `UNIDADES`: cómo se cuentan los productos del stock (cajas, potes, frascos…).
