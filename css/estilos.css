@@ -1,7 +1,7 @@
 /* Estilos de Tommy Barber: sitio para clientes, reserva de turnos y panel del dueño.
    Tipografías en ../fuentes (licencia en fuentes/OFL.txt). */
 
-@font-face{font-family:'Archivo';font-style:normal;font-weight:100 900;font-stretch:62% 125%;font-display:swap;src:url('../fuentes/archivo.woff2') format('woff2')}
+@font-face{font-family:'Archivo';font-style:normal;font-weight:400 800;font-stretch:62% 100%;font-display:swap;src:url('../fuentes/archivo.woff2') format('woff2')}
 @font-face{font-family:'Sedgwick Ave Display';font-style:normal;font-weight:400;font-display:swap;src:url('../fuentes/sedgwick-ave-display.woff2') format('woff2')}
 
 :root{

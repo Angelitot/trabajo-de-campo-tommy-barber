@@ -42,6 +42,9 @@ Los turnos con números del tipo `0981 000 …` son de ejemplo: en esos, «Recor
 | `img/` | Logo oficial, foto de la fachada, textura de ladrillo e ícono |
 | `fuentes/` | Tipografías Archivo y Sedgwick Ave Display, con su licencia |
 | `herramientas/empaquetar.py` | Arma una versión en un solo archivo para mandarla o presentarla sin internet |
+| `herramientas/publicar.mjs` | Arma `publico/`, la versión optimizada que se publica |
+| `package.json` | Herramientas para armar la versión optimizada (`npm run build`) |
+| `despliegue.yaml` | Configuración de publicación del sitio (blueprint) |
 
 ## Dónde cambiar los datos del local
 
@@ -75,6 +78,28 @@ Los textos fijos, como la dirección o la descripción del inicio, están en `in
 
 Si prefieren no usar la terminal, [GitHub Desktop](https://desktop.github.com) hace lo mismo con botones.
 
+## Versión publicada
+
+El sitio se publica solo: cada cambio que se une a `main` arma la versión optimizada y la sube, con la configuración de `despliegue.yaml`.
+
+La versión optimizada sale de los mismos archivos (`index.html`, `css/`, `js/`, `img/` y `fuentes/`), así que se sigue trabajando ahí. Para armarla en tu computadora hace falta [Node.js](https://nodejs.org) 20 o más nuevo:
+
+```
+npm install
+npm run build
+```
+
+Queda en `publico/`, que no se sube al repositorio. Para verla como en internet, corré `python -m http.server 8080 -d publico` y abrí http://localhost:8080.
+
+Qué hace para que cargue rápido:
+
+- Pone el CSS dentro del HTML y minifica el CSS y el JS.
+- Convierte las imágenes a WebP y AVIF. La foto de la fachada sale en tres tamaños y se carga recién cuando la página llega a esa parte.
+- Pide las tipografías y el logo apenas llega la página.
+- Les pone un hash en el nombre a los archivos de `assets/`, así el navegador los guarda un año y, si cambian, baja los nuevos.
+
+Si cambiás `index.html` y el armado avisa que no encontró algo, revisá `herramientas/publicar.mjs`: busca partes exactas de la página (la hoja de estilos, el script y la foto de la fachada) para reemplazarlas.
+
 ## Versión en un solo archivo
 
 Para mandar el proyecto como un único `.html` (con imágenes y tipografías adentro):
@@ -88,4 +113,4 @@ El archivo queda en `dist/tommy-barber.html`. La carpeta `dist/` no se sube al r
 ## Créditos
 
 - Logo, foto de la fachada y lista de precios: Tommy Barber.
-- Tipografías: Archivo (The Archivo Project Authors) y Sedgwick Ave Display (The Sedgwick Ave Project Authors), bajo la SIL Open Font License 1.1. Ver `fuentes/OFL.txt`.
+- Tipografías: Archivo (The Archivo Project Authors) y Sedgwick Ave Display (The Sedgwick Ave Project Authors), bajo la SIL Open Font License 1.1. Ver `fuentes/OFL.txt`. Archivo está recortada a los anchos (62 a 100 %) y pesos (400 a 800) que usa el sitio, para que pese menos.
