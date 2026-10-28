@@ -2,7 +2,7 @@
 
    - El CSS va minificado dentro del HTML: la página se dibuja sin esperar otro archivo.
    - El JS va minificado.
-   - Las imágenes pasan a WebP; la foto de la fachada, además, a AVIF y en tres tamaños,
+   - Las imágenes pasan a WebP; las fotos (fachada y galería), además, a AVIF y en varios tamaños,
      para que cada celular baje la que necesita.
    - Las tipografías y el logo se piden apenas llega el HTML (preload).
    - Los archivos de publico/assets/ llevan un hash en el nombre: el navegador los guarda
@@ -20,9 +20,14 @@ import sharp from 'sharp';
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SALIDA = path.join(RAIZ, 'publico');
 const ASSETS = path.join(SALIDA, 'assets');
-const ANCHOS_FACHADA = [480, 720, 1080];
-// Ancho con que se ve la foto de la fachada en pantalla (medido en celular, tablet y computadora).
-const TAMANOS_FACHADA = '(min-width: 1280px) 681px, (min-width: 960px) 54vw, calc(100vw - 48px)';
+// Fotos de la página: en qué anchos se generan y con qué ancho se ven en pantalla
+// (medido en celular, tablet y computadora). Cada foto sale en AVIF y WebP.
+const FOTOS = {
+  'img/fachada.jpg': { anchos: [480, 720, 1080], sizes: '(min-width: 1280px) 681px, (min-width: 960px) 54vw, calc(100vw - 48px)' },
+  'img/galeria/corte-1.jpg': { anchos: [400, 800], sizes: '(min-width: 1240px) 354px, (min-width: 840px) 30vw, (min-width: 620px) 44vw, calc(100vw - 68px)' },
+  'img/galeria/corte-2.jpg': { anchos: [400, 800], sizes: '(min-width: 1240px) 354px, (min-width: 840px) 30vw, (min-width: 620px) 44vw, calc(100vw - 68px)' },
+  'img/galeria/corte-3.jpg': { anchos: [400, 800], sizes: '(min-width: 1240px) 354px, (min-width: 840px) 30vw, (min-width: 620px) 44vw, calc(100vw - 68px)' },
+};
 
 const filas = [];
 const ruta = (relativa) => path.join(RAIZ, relativa);
@@ -48,16 +53,26 @@ async function imagenes() {
   const ladrillo = await guardar('ladrillo', 'webp', await sharp(ruta('img/ladrillo.jpg')).webp({ quality: 70, effort: 6 }).toBuffer(), 'img/ladrillo.jpg');
   const favicon = await guardar('favicon', 'jpg', await readFile(ruta('img/favicon.jpg')));
 
-  const fachada = { avif: [], webp: [] };
-  for (const ancho of ANCHOS_FACHADA) {
-    const foto = sharp(ruta('img/fachada.jpg')).resize({ width: ancho });
-    fachada.avif.push(`${await guardar(`fachada-${ancho}`, 'avif', await foto.clone().avif({ quality: 52, effort: 6 }).toBuffer())} ${ancho}w`);
-    fachada.webp.push(`${await guardar(`fachada-${ancho}`, 'webp', await foto.clone().webp({ quality: 72, effort: 6 }).toBuffer())} ${ancho}w`);
+  const fotos = {};
+  for (const [origen, conf] of Object.entries(FOTOS)) {
+    const nombre = path.basename(origen, path.extname(origen));
+    const natural = (await sharp(ruta(origen)).metadata()).width;
+    // Nunca más grande que la foto original
+    const anchos = [...new Set(conf.anchos.map((a) => Math.min(a, natural)))];
+    const f = { avif: [], webp: [], sizes: conf.sizes };
+    let ultimoAvif = null;
+    for (const ancho of anchos) {
+      const foto = sharp(ruta(origen)).resize({ width: ancho });
+      const avif = await foto.clone().avif({ quality: 52, effort: 6 }).toBuffer();
+      ultimoAvif = avif;
+      f.avif.push(`${await guardar(`${nombre}-${ancho}`, 'avif', avif)} ${ancho}w`);
+      f.webp.push(`${await guardar(`${nombre}-${ancho}`, 'webp', await foto.clone().webp({ quality: 72, effort: 6 }).toBuffer())} ${ancho}w`);
+    }
+    f.grande = f.webp[f.webp.length - 1].split(' ')[0];
+    filas.push([origen, `${nombre}-${anchos.at(-1)} (AVIF)`, await tamano(ruta(origen)), ultimoAvif.length]);
+    fotos[origen] = f;
   }
-  const grande = fachada.webp[fachada.webp.length - 1].split(' ')[0];
-  const avif = await stat(path.join(SALIDA, fachada.avif[fachada.avif.length - 1].split(' ')[0]));
-  filas.push(['img/fachada.jpg', `fachada-${ANCHOS_FACHADA.at(-1)} (AVIF)`, await tamano(ruta('img/fachada.jpg')), avif.size]);
-  return { logo, logoAvif, ladrillo, favicon, fachada, grande };
+  return { logo, logoAvif, ladrillo, favicon, fotos };
 }
 
 async function main() {
@@ -98,13 +113,15 @@ async function main() {
     `<link rel="preload" href="${img.logoAvif}" as="image" type="image/avif" fetchpriority="high">`,
     `<style>${css}</style>`,
   ].join('\n'));
-  html = reemplazar(html, '<img src="img/fachada.jpg" width="1080" height="859"', [
-    '<picture>',
-    `<source type="image/avif" srcset="${img.fachada.avif.join(', ')}" sizes="${TAMANOS_FACHADA}">`,
-    `<source type="image/webp" srcset="${img.fachada.webp.join(', ')}" sizes="${TAMANOS_FACHADA}">`,
-    `<img src="${img.grande}" width="1080" height="859" loading="lazy" decoding="async"`,
-  ].join('\n'));
-  html = html.replace(/(<img src="assets\/fachada[^>]*>)/, '$1\n</picture>');
+  // Cada foto pasa a un <picture> con AVIF y WebP en varios tamaños
+  for (const [origen, f] of Object.entries(img.fotos)) {
+    const etiqueta = new RegExp('<img src="' + origen.replace(/[.*+?^$(){}|[\]\\]/g, '\\$&') + '"([^>]*)>');
+    if (!etiqueta.test(html)) throw new Error('No encontré esta foto en index.html: ' + origen);
+    html = html.replace(etiqueta, (_, resto) => '<picture>' +
+      `<source type="image/avif" srcset="${f.avif.join(', ')}" sizes="${f.sizes}">` +
+      `<source type="image/webp" srcset="${f.webp.join(', ')}" sizes="${f.sizes}">` +
+      `<img src="${f.grande}"${resto}></picture>`);
+  }
   html = reemplazar(html, '<script src="js/app.js"></script>', `<script src="${app}"></script>`);
 
   const sueltos = html.match(/(?:src|href)="(?:img|css|js|fuentes)\/[^"]*"/g);
@@ -115,7 +132,7 @@ async function main() {
   const kb = (n) => (n / 1024).toFixed(1).padStart(7) + ' KB';
   console.log('Listo: publico/\n');
   for (const [origen, destino, antes, despues] of filas) {
-    console.log(`${origen.padEnd(18)} ${kb(antes)}  ->  ${kb(despues)}   ${destino}`);
+    console.log(`${origen.padEnd(24)} ${kb(antes)}  ->  ${kb(despues)}   ${destino}`);
   }
 }
 
