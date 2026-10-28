@@ -12,6 +12,8 @@ services:
       ignoredPaths:
         - README.md
         - herramientas/empaquetar.py
+        - docs/**
+        - pruebas/**
     envVars:
       - key: NODE_VERSION
         value: "22"
