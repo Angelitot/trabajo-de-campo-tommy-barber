@@ -2,9 +2,9 @@
 
 Trabajo de campo: diseño web para **Tommy Barber**, barbería de Quiindy (Constitución esquina).
 
-- **Sitio para clientes:** precios oficiales (7 servicios y 6 combos), horarios, cómo llegar e Instagram.
+- **Sitio para clientes:** precios oficiales (7 servicios y 6 combos), galería de cortes, horarios con los cambios del local, cómo llegar, WhatsApp (0972 496 916) e Instagram.
 - **Reserva de turnos:** servicio o combo, día y hora según el horario real del local, nombre y WhatsApp, y comprobante.
-- **Mis turnos:** el cliente ve los turnos que reservó desde su celular y puede cancelarlos mientras no hayan empezado.
+- **Mis turnos:** el cliente ve los turnos que reservó desde su celular y, mientras no hayan empezado, puede cambiarlos de día u hora o cancelarlos.
 - **Panel del dueño:**
   - **Atender:** el turno que corresponde ahora, en grande, con todo para cobrar, marcar «no vino» o pasarlo después; el siguiente al lado y la fila del día. Se usa con una mano o con el teclado (espacio y flechas para moverse, 1-2-3 para cobrar). Se entra directo con `#atender`.
   - **Hoy:** agenda del día para cobrar, marcar «no vino» o cancelar, la caja del día y lo que entró en la semana.
@@ -12,10 +12,13 @@ Trabajo de campo: diseño web para **Tommy Barber**, barbería de Quiindy (Const
   - **Caja:** lo que entra, los gastos y la ganancia de hoy, la semana o el mes.
   - **Stock:** insumos y productos para vender; el dueño los carga, resta lo que usa o vende y suma lo que compra.
   - **Precios:** el dueño cambia el precio y la duración de cada servicio o combo, o vuelve a la lista original del local.
+  - **Horario:** cerrar días u horas, o abrir con otro horario un día puntual; el sitio deja de ofrecer esos turnos y avisa el cambio.
+  - **Clientes:** ficha de cada cliente (visitas, gasto, faltas, historial) y aviso en Atender cuando alguien suele faltar.
+  - **Reportes:** días y horas con más clientes, ganancia mes a mes, faltas y cancelaciones.
 
 La documentación completa del trabajo (relevamiento, requerimientos, diseño, cómo está hecho el sistema, pruebas y capturas) está en [docs/DOCUMENTACION.md](docs/DOCUMENTACION.md).
 
-Es un prototipo que funciona en el navegador, sin servidor: los turnos, la caja, el stock y los precios se guardan en el navegador (localStorage). Los avisos por WhatsApp abren WhatsApp con el mensaje listo (`wa.me`): el dueño solo toca Enviar.
+Es un prototipo que funciona en el navegador, sin servidor: los turnos, la caja, el stock, los precios y los cambios de horario se guardan en el navegador (localStorage). Los avisos por WhatsApp abren WhatsApp con el mensaje listo (`wa.me`): el dueño solo toca Enviar.
 
 ## Cómo abrirlo
 
@@ -26,13 +29,15 @@ Es un prototipo que funciona en el navegador, sin servidor: los turnos, la caja,
 ## Cómo probarlo en la presentación
 
 1. En el sitio, reservá un turno para mañana con tu propio número de WhatsApp.
-2. Arriba aparece «Tenés turno…». En **Mis turnos** se ve el turno y se puede cancelar.
+2. Arriba aparece «Tenés turno…». En **Mis turnos** se ve el turno y se puede cambiar de día u hora o cancelar.
 3. Entrá al panel y abrí **Turnos**: tocá **Recordar por WhatsApp** en tu turno y se abre WhatsApp con el recordatorio para tu número.
 4. Cancelalo desde el panel: el sistema ofrece **Avisar por WhatsApp** con el mensaje de cancelación, y en **Mis turnos** dice que la barbería lo canceló.
 5. Abrí **Atender**: aparece el cliente que corresponde ahora. Probá Espacio y las flechas para moverte, **1** para cobrar en efectivo y **Z** para deshacer. Con **A** sumás a alguien que llegó sin turno.
-6. En **Stock**, cargá un insumo nuevo, usá uno y registrá una compra con lo que pagaste: el gasto aparece en **Caja**.
-7. En **Precios**, cambiá el precio de un corte y guardá: el sitio lo muestra enseguida. Los turnos ya reservados mantienen el precio con que se reservaron.
-8. Al terminar, **Reiniciar datos de ejemplo** (abajo del menú del panel) vuelve la agenda, la caja y el stock al principio, y en **Precios** está **Volver a la lista original del local**.
+6. En **Horario**, cerrá mañana con el motivo «Feriado»: el sistema muestra los turnos que quedan afuera para avisarles, y en el sitio el día figura cerrado.
+7. En **Clientes**, buscá un cliente y abrí su ficha. En **Reportes**, mirá el mapa de días y horas.
+8. En **Stock**, cargá un insumo nuevo, usá uno y registrá una compra con lo que pagaste: el gasto aparece en **Caja**.
+9. En **Precios**, cambiá el precio de un corte y guardá: el sitio lo muestra enseguida. Los turnos ya reservados mantienen el precio con que se reservaron.
+10. Al terminar, **Reiniciar datos de ejemplo** (abajo del menú del panel) vuelve la agenda, la caja y el stock al principio; en **Precios** está **Volver a la lista original del local** y en **Horario** se quitan los cambios cargados.
 
 Los turnos con números del tipo `0981 000 …` son de ejemplo: en esos, «Recordar» muestra cómo quedaría el mensaje en vez de abrir WhatsApp.
 
@@ -43,7 +48,7 @@ Los turnos con números del tipo `0981 000 …` son de ejemplo: en esos, «Recor
 | `index.html` | La página: inicio, precios, reserva, horarios, cómo llegar y pie |
 | `css/estilos.css` | Colores, tipografías y diseño para celular y computadora |
 | `js/app.js` | Datos del local, reserva, Mis turnos y panel del dueño |
-| `img/` | Logo oficial, foto de la fachada, textura de ladrillo e ícono |
+| `img/` | Logo oficial, foto de la fachada, fotos de la galería (`img/galeria/`), textura de ladrillo e ícono |
 | `fuentes/` | Tipografías Archivo y Sedgwick Ave Display, con su licencia |
 | `herramientas/empaquetar.py` | Arma una versión en un solo archivo para mandarla o presentarla sin internet |
 | `herramientas/publicar.mjs` | Arma `publico/`, la versión optimizada que se publica |
@@ -62,6 +67,7 @@ python -m playwright install chromium
 python pruebas/probar_todo.py
 python pruebas/probar_precios.py
 python pruebas/probar_atender.py
+python pruebas/probar_mejoras.py
 ```
 
 Al final dicen «todo bien» o qué falló. Las capturas quedan en `pruebas/capturas/`.
@@ -80,10 +86,12 @@ Los textos fijos, como la dirección o la descripción del inicio, están en `in
 ## Para confirmar con el dueño
 
 - [x] Servicios, combos y precios (lista oficial del local, desde noviembre de 2026)
-- [ ] Cuánto dura cada servicio y combo (hoy son estimados)
+- [x] Cuánto dura cada servicio y combo: quedan aproximadas (ni el dueño las sabe exactas)
 - [ ] Qué incluye «Barba» en los combos: marcación, afeitado o ritual
 - [ ] Calle que cruza con Constitución
-- [ ] Número de WhatsApp del local
+- [x] Número de WhatsApp del local: 0972 496 916
+- [ ] Cuántos barberos atienden y cómo trabajan (para una agenda por barbero)
+- [ ] En qué dispositivo va a usar el panel
 - [ ] Productos que vende e insumos que usa
 - [ ] Formas de pago que acepta (efectivo, transferencia, billetera)
 - [ ] Permiso para usar el logo y la foto de la fachada si el sitio se publica
@@ -132,5 +140,5 @@ El archivo queda en `dist/tommy-barber.html`. La carpeta `dist/` no se sube al r
 
 ## Créditos
 
-- Logo, foto de la fachada y lista de precios: Tommy Barber.
+- Logo, foto de la fachada, fotos de cortes y lista de precios: Tommy Barber.
 - Tipografías: Archivo (The Archivo Project Authors) y Sedgwick Ave Display (The Sedgwick Ave Project Authors), bajo la SIL Open Font License 1.1. Ver `fuentes/OFL.txt`. Archivo está recortada a los anchos (62 a 100 %) y pesos (400 a 800) que usa el sitio, para que pese menos.

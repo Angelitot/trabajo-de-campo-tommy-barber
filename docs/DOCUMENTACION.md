@@ -4,7 +4,7 @@ Trabajo de campo: sitio web con reserva de turnos y panel de administración par
 
 - **Sitio publicado:** https://tommy-barber.onrender.com
 - **Código:** este repositorio. Cómo abrirlo y probarlo está en el [README](../README.md).
-- **Período documentado:** del 20 al 28 de octubre de 2026.
+- **Período documentado:** del 20 al 28 de octubre de 2026. La entrega es el 10 de noviembre.
 
 ![Inicio del sitio en computadora](capturas/01-inicio.webp)
 
@@ -74,7 +74,8 @@ La lista no indica cuánto dura cada servicio. Las duraciones del sistema son es
 - Saber si el local está abierto en este momento.
 - Reservar un turno: elegir servicio o combo, día y hora libre, y dejar nombre y WhatsApp.
 - Recibir un comprobante con el código del turno.
-- Ver sus turnos y cancelarlos mientras no hayan empezado.
+- Ver sus turnos, cambiarlos de día u hora o cancelarlos mientras no hayan empezado.
+- Ver trabajos del local y escribirle por WhatsApp.
 
 **Dueño**
 
@@ -87,6 +88,9 @@ La lista no indica cuánto dura cada servicio. Las duraciones del sistema son es
 - Anotar gastos y otros ingresos, y ver lo que entró, lo que salió y la ganancia del día, la semana o el mes.
 - Cargar insumos y productos para vender; restar lo que usa o vende y sumar lo que compra.
 - Cambiar el precio y la duración de cada servicio o combo.
+- Cerrar días u horas, o abrir con otro horario un día puntual, sin que el sitio ofrezca esos turnos.
+- Conocer a sus clientes: cuántas veces vinieron, qué se hacen, cuánto gastaron y si faltan.
+- Ver reportes: días y horas con más clientes, ganancia mes a mes, faltas y cancelaciones.
 
 ### No funcionales
 
@@ -108,6 +112,8 @@ La lista no indica cuánto dura cada servicio. Las duraciones del sistema son es
 | 27/10/2026 | Publicación | Versión optimizada, sitio publicado y base de datos PostgreSQL creada, vacía, para la próxima etapa. |
 | 27/10/2026 | Documentación | Este documento y las pruebas automáticas en el repositorio. |
 | 28/10/2026 | Pantalla Atender | El turno actual y el siguiente en una sola pantalla, con atajos de teclado, deshacer y clientes sin turno. |
+| 28/10/2026 | Cuestionario de mejoras | Se definieron las mejoras siguientes y se confirmó el WhatsApp del local. Las duraciones quedan aproximadas porque ni el dueño las conoce con exactitud. |
+| 28/10/2026 | Mejoras del panel y del sitio | Cambios de horario, fichas de clientes con aviso de faltas, reportes, galería de cortes, WhatsApp del local y cambio de turno desde «Mis turnos». |
 
 ## 5. Diseño visual
 
@@ -121,6 +127,7 @@ La identidad sale de la fachada del local: pared de ladrillo, persiana metálica
 | Colores | Chapa `#E9ECEB`, rojo `#C8102E`, azul `#1B2A5C`, negro y ladrillo `#814535`: los colores del poste de barbería y de la fachada. |
 | Estado del local | Un poste de barbería dibujado con CSS que indica si el local está abierto. |
 | Botones de WhatsApp | Verde de WhatsApp solo en las acciones urgentes, como recordar los turnos de mañana, para que no compitan con el resto. |
+| Galería de cortes | Fotos de trabajos pegadas con cinta sobre la pared de ladrillo, como pósteres. |
 
 <p>
 <img src="capturas/13-celular-inicio.webp" width="300" alt="Inicio en celular">
@@ -159,10 +166,10 @@ flowchart LR
 
 | Archivo o carpeta | Contenido |
 |---|---|
-| `index.html` | Estructura de la página: inicio, precios, reserva, horarios, cómo llegar y pie |
+| `index.html` | Estructura de la página: inicio, precios, cortes, reserva, horarios, cómo llegar y pie |
 | `css/estilos.css` | Diseño para celular y computadora |
 | `js/app.js` | Toda la lógica: datos del local, reserva, Mis turnos y panel |
-| `img/`, `fuentes/` | Logo, fachada, textura y tipografías |
+| `img/`, `fuentes/` | Logo, fachada, fotos de la galería (`img/galeria/`), textura y tipografías |
 | `herramientas/publicar.mjs` | Arma la versión optimizada que se publica |
 | `herramientas/empaquetar.py` | Arma la versión en un solo archivo |
 | `pruebas/` | Pruebas automáticas |
@@ -175,20 +182,22 @@ El código está dentro de una función que se ejecuta sola, para no ensuciar el
 1. **Datos del local:** servicios y combos (`SERVICIOS`), horario por día (`HORAS`), medios de pago, categorías de caja y unidades de stock. Es lo único que hay que tocar si cambia algo del local.
 2. **Utilidades:** formato de guaraníes y fechas, hora de Paraguay, validación de teléfonos y armado de mensajes de WhatsApp.
 3. **Turnos:** carga y guardado, cálculo de horarios libres y estado de cada turno.
-4. **Datos de ejemplo:** agenda, caja y stock para que el panel tenga contenido en la presentación.
-5. **Sitio:** estado del local, precios, horarios y el asistente de reserva.
-6. **Panel:** acceso con PIN y las vistas Atender, Hoy, Turnos, Caja, Stock y Precios.
+4. **Cambios de horario:** los cierres y horarios especiales del dueño, y el cálculo del horario real de cada día (`horasDe`), que usan el sitio, la reserva y el panel.
+5. **Datos de ejemplo:** agenda, caja, stock y un historial de seis meses para que el panel tenga contenido en la presentación.
+6. **Sitio:** estado del local, precios, horarios y el asistente de reserva y de cambio de turno.
+7. **Panel:** acceso con PIN y las vistas Atender, Hoy, Turnos, Caja, Stock, Precios, Horario, Clientes y Reportes.
 
 La interfaz se arma con plantillas de texto y responde a los clics con un único manejador por zona, que lee el atributo `data-accion` del botón tocado.
 
 ### Datos que guarda
 
-Mientras no haya base de datos, todo se guarda en el `localStorage` del navegador, en tres claves:
+Mientras no haya base de datos, todo se guarda en el `localStorage` del navegador, en cuatro claves:
 
 | Clave | Contenido |
 |---|---|
 | `tommybarber-reservas` | Turnos reservados desde ese navegador (lo que ve el cliente en «Mis turnos») |
 | `tommybarber-panel` | Agenda, caja, productos y movimientos de stock del panel |
+| `tommybarber-horario` | Cambios de horario: días cerrados, horas cerradas y horarios especiales |
 | `tommybarber-precios` | Precios y duraciones que cambió el dueño, y el historial de cambios |
 
 **Turno**
@@ -206,6 +215,7 @@ Mientras no haya base de datos, todo se guarda en el `localStorage` del navegado
 | `recordadoEn`, `avisadoEn` | Cuándo se mandó el recordatorio o el aviso de cancelación |
 | `orden` | Lugar en la fila de Atender, si el dueño lo pasó después de otro |
 | `sinTurno` | Si es alguien que llegó al local sin reservar |
+| `antes`, `cambiadoEn` | Si el cliente lo cambió de día u hora: el horario anterior y cuándo lo cambió |
 
 **Movimiento de caja:** fecha, hora, tipo (`entrada` o `salida`), categoría (servicio, venta de producto, compra de stock, gasto u otro ingreso), concepto, monto, medio de pago y, si corresponde, el turno que lo generó.
 
@@ -214,6 +224,10 @@ Mientras no haya base de datos, todo se guarda en el `localStorage` del navegado
 **Movimiento de stock:** producto, tipo (`carga`, `compra`, `uso`, `venta`, `ajuste` o `baja`), cantidad, fecha y, según el caso, el costo, el monto o la cantidad antes y después.
 
 **Cambio de precio:** servicio, campo (`precio` o duración), valor anterior, valor nuevo y fecha.
+
+**Cambio de horario:** tipo (`cerrado`, `franja` o `especial`), fecha (y último día, si cierra varios), horas de inicio y fin, y motivo.
+
+**Cliente:** no se guarda aparte. El panel lo arma juntando todos los turnos con el mismo número de WhatsApp (o el mismo nombre, si no dejó número).
 
 ### Reglas del negocio
 
@@ -226,6 +240,10 @@ Mientras no haya base de datos, todo se guarda en el `localStorage` del navegado
 - **Precio fijo al reservar:** si el dueño cambia un precio, los turnos ya reservados mantienen el precio y la duración con que se reservaron.
 - **Stock:** nunca se puede restar más de lo que hay. Si la cantidad llega al mínimo, aparece el aviso «hay que reponer».
 - **Caja automática:** cobrar un turno o vender un producto genera una entrada en la caja, y comprar stock indicando el costo genera una salida.
+- **Horario real del día:** al horario normal se le aplican los cambios del dueño. Un día cerrado no tiene horarios; un horario especial reemplaza al normal; una franja cerrada se descuenta. Así se calculan el estado del local, los horarios libres y el próximo día de atención.
+- **Turnos afuera del horario:** si el dueño cierra un horario que ya tenía turnos, el sistema se los muestra para que los cancele y les avise por WhatsApp. No los cancela solo.
+- **Cambio de turno:** el cliente lo puede cambiar mientras no haya empezado. Conserva el código, el precio y la duración; el horario anterior queda libre y el recordatorio se tiene que mandar de nuevo.
+- **Prioridad del turno:** el turno reservado tiene prioridad; los que llegan sin turno se atienden en los huecos.
 
 **Estados del turno**
 
@@ -247,7 +265,7 @@ stateDiagram-v2
 
 ### Datos de ejemplo
 
-Para que el panel se pueda mostrar sin esperar reservas reales, el sistema genera una agenda de ejemplo para hoy y los próximos días, la caja de los últimos 40 días y algunos movimientos de stock. Los datos se generan a partir de la fecha, así que el mismo día siempre muestra los mismos. Los turnos de ejemplo usan teléfonos `0981 000 …`: en esos, «Recordar» muestra el mensaje en pantalla en vez de abrir WhatsApp. El botón **Reiniciar datos de ejemplo** vuelve todo al principio.
+Para que el panel se pueda mostrar sin esperar reservas reales, el sistema genera una agenda de ejemplo para hoy y los próximos días, un historial de turnos de los últimos seis meses (unos 500 clientes, algunos fijos y otros ocasionales, con faltas y cancelaciones), la caja de esos días y algunos movimientos de stock. Los datos se generan a partir de la fecha, así que el mismo día siempre muestra los mismos. Los turnos de ejemplo usan teléfonos `0981 000 …`: en esos, «Recordar» muestra el mensaje en pantalla en vez de abrir WhatsApp. El botón **Reiniciar datos de ejemplo** vuelve todo al principio.
 
 ## 7. Funcionalidades
 
@@ -259,17 +277,25 @@ Para que el panel se pueda mostrar sin esperar reservas reales, el sistema gener
 
 ![Precios](capturas/02-precios.webp)
 
+**Cortes.** Una galería con fotos de trabajos del local y el enlace al Instagram.
+
+![Galería de cortes](capturas/16-galeria.webp)
+
 **Reserva en tres pasos.** El cliente elige el servicio, después el día y la hora (solo se muestran los horarios libres), y por último deja sus datos. Al terminar recibe un comprobante con el código del turno.
 
 ![Elegir día y hora](capturas/03-reserva-horario.webp)
 
 ![Comprobante](capturas/04-reserva-comprobante.webp)
 
-**Mis turnos.** Lista los turnos reservados desde ese celular. El cliente los puede cancelar mientras no hayan empezado, y el horario queda libre para otra persona. Si la barbería canceló un turno, también se ve ahí.
+**Mis turnos.** Lista los turnos reservados desde ese celular. Mientras no hayan empezado, el cliente los puede cambiar de día u hora o cancelar, y el horario anterior queda libre para otra persona. Si la barbería canceló un turno, también se ve ahí.
+
+**Cambiar día u hora.** Desde «Mis turnos», el cliente elige un nuevo día y horario sin cancelar y reservar de nuevo; su horario actual aparece marcado. El comprobante dice «Turno cambiado» y cuál era el horario anterior, y en el panel el dueño ve que el cliente lo cambió.
+
+![Cambiar el turno](capturas/17-cambiar-turno.webp)
 
 ![Mis turnos](capturas/05-mis-turnos.webp)
 
-**Horarios y cómo llegar.** Muestran el horario de cada día, con el día de hoy resaltado, la foto de la fachada y los enlaces a Google Maps e Instagram.
+**Horarios y cómo llegar.** Muestran el horario de cada día, con el día de hoy resaltado, y arriba los cambios de las próximas dos semanas (por ejemplo, «Sábado 31 de octubre: cerrado todo el día. Feriado»). También están la foto de la fachada y los enlaces a Google Maps, WhatsApp (0972 496 916) e Instagram.
 
 ![Horarios](capturas/06-horarios.webp)
 
@@ -332,13 +358,43 @@ Mensajes que arma el sistema:
 
 ![Panel: Precios](capturas/12-panel-precios.webp)
 
+**Horario.** El dueño carga tres tipos de cambio:
+
+- **Cerrar días:** uno o varios días seguidos, por ejemplo un feriado o vacaciones.
+- **Cerrar horas:** una franja de un día, por ejemplo de 15:00 a 17:00 por un trámite.
+- **Otro horario:** un día que abre distinto, aunque sea domingo.
+
+Antes de guardar, el sistema avisa si hay turnos reservados en ese horario. Después los muestra debajo del cambio para cancelarlos y avisar a cada cliente por WhatsApp. El sitio deja de ofrecer esos horarios enseguida y los avisa en Horarios. Un cambio se puede quitar.
+
+![Panel: Horario](capturas/18-panel-horario.webp)
+
+**Clientes.** Reúne a cada cliente por su número de WhatsApp. La lista se ordena por los que más vienen, los recientes o los que faltaron, y se busca por nombre o número. La ficha de cada cliente muestra:
+
+- visitas, cuánto gastó, faltas y cancelaciones;
+- desde cuándo es cliente, su último corte, su próximo turno y lo que más se hace;
+- el historial de turnos.
+
+Si un cliente faltó antes, Atender, Hoy y Turnos lo marcan con «Faltó 2 veces», para que el dueño decida si le confirma el turno. No se bloquea a nadie.
+
+![Panel: Clientes](capturas/19-panel-clientes.webp)
+
+![Ficha de un cliente](capturas/20-panel-cliente.webp)
+
+**Reportes.** Para las últimas 4 semanas, 3 meses o 6 meses, muestra tres cosas:
+
+- **Días y horas con más clientes:** un mapa de calor de lunes a sábado, de 08:00 a 18:00, con el día y la hora con más movimiento.
+- **Ganancia mes a mes:** lo que entró menos lo que salió de la caja en cada uno de los últimos seis meses.
+- **Faltas y cancelaciones:** qué parte de los turnos no vino o se canceló, y los clientes que más faltan.
+
+![Panel: Reportes](capturas/21-panel-reportes.webp)
+
 ## 8. Velocidad y versión publicada
 
 Lo que se publica no son los archivos originales sino una versión optimizada, que arma `npm run build` (`herramientas/publicar.mjs`):
 
 - El CSS va dentro del HTML, así la página se dibuja sin esperar otro archivo.
 - El CSS y el JavaScript van minificados.
-- Las imágenes se convierten a AVIF y WebP. La foto de la fachada sale en tres tamaños para que cada pantalla baje la que necesita, y se carga recién cuando la página llega a esa parte.
+- Las imágenes se convierten a AVIF y WebP. Las fotos de la fachada y de la galería salen en varios tamaños para que cada pantalla baje la que necesita, y se cargan recién cuando la página llega a esa parte.
 - Las tipografías y el logo se piden apenas llega la página.
 - La tipografía Archivo se recortó a los anchos y pesos que usa el sitio: pasó de 88 KB a 58 KB.
 - Los archivos llevan un hash en el nombre, así el navegador los guarda un año y baja los nuevos solo cuando cambian.
@@ -355,7 +411,7 @@ Medición con Lighthouse en modo celular, con conexión móvil simulada:
 
 ## 9. Pruebas
 
-La carpeta `pruebas/` tiene tres recorridos automáticos con Playwright, que abren el sitio en un navegador real con el reloj fijo en el martes 27/10/2026 a las 10:05 (hora de Paraguay). Cada recorrido se hace en computadora y en celular.
+La carpeta `pruebas/` tiene cuatro recorridos automáticos con Playwright, que abren el sitio en un navegador real con el reloj fijo en el martes 27/10/2026 a las 10:05 (hora de Paraguay). Cada recorrido se hace en computadora y en celular.
 
 - **`probar_todo.py`** (50 comprobaciones por pantalla) prueba:
   - los precios oficiales;
@@ -369,6 +425,7 @@ La carpeta `pruebas/` tiene tres recorridos automáticos con Playwright, que abr
   - que las ventas y compras del stock lleguen a la caja;
   - que no haya errores en la consola.
 - **`probar_atender.py`** prueba la pantalla Atender: la entrada directa con `#atender`, moverse con Espacio y las flechas, cobrar con la tecla 1 y que entre a la caja, deshacer, pasar a alguien después del siguiente, «no vino» solo después de la hora, sumar a alguien sin turno y vaciar la fila.
+- **`probar_mejoras.py`** prueba la galería y el WhatsApp del local; el cambio de turno desde «Mis turnos» y que el dueño lo vea; los cambios de horario (cerrar un día con turnos, avisar a los afectados, que el sitio y la reserva lo respeten, cerrar unas horas, abrir un domingo y quitar un cambio); los clientes (lista, búsqueda, ficha y faltas en Atender) y los reportes.
 - **`probar_precios.py`** prueba el cambio de precios desde el panel: la validación, el guardado, el historial, el sitio actualizado, que los turnos reservados conserven su precio y la vuelta a la lista original.
 
 Cómo correrlas:
@@ -379,6 +436,7 @@ python -m playwright install chromium
 python pruebas/probar_todo.py
 python pruebas/probar_precios.py
 python pruebas/probar_atender.py
+python pruebas/probar_mejoras.py
 ```
 
 También se pueden correr contra la versión publicada, pasando la dirección como argumento. Las capturas quedan en `pruebas/capturas/`.
@@ -396,6 +454,9 @@ El código está en un repositorio privado de GitHub con los integrantes del gru
 |---|---|
 | #1 | Precios oficiales, cancelación de turnos con aviso por WhatsApp, stock del dueño y precios editables desde el panel |
 | #2 | Versión optimizada para publicar y configuración de publicación |
+| #3 | Esta documentación y las pruebas automáticas |
+| #4 | Pantalla Atender |
+| #5 | Cambios de horario, clientes, reportes, galería, WhatsApp del local y cambio de turno |
 
 ## 12. Limitaciones y próximos pasos
 
@@ -404,16 +465,17 @@ El código está en un repositorio privado de GitHub con los integrantes del gru
 - Los datos viven en cada navegador. Un turno que reserva un cliente desde su celular no le llega al panel del dueño en otro dispositivo. Para eso hace falta el servidor y la base de datos de la próxima etapa.
 - El PIN del panel es de prueba y está en el código. Con el servidor, el acceso tiene que validarse del lado del servidor.
 - Los mensajes de WhatsApp los envía el dueño a mano: el sistema solo abre WhatsApp con el texto listo.
+- Hay una sola agenda. Si trabaja más de un barbero, hace falta una agenda por barbero y que el cliente pueda elegir con quién (o «el que esté libre»). Queda pendiente hasta confirmarlo con el dueño.
 
 **Próximos pasos**
 
 1. Diseñar la base de datos: turnos, clientes, servicios, caja, stock y cambios de precio.
 2. Hacer el servidor (API) que guarde y lea esos datos, y conectar el sitio y el panel.
 3. Confirmar con el dueño:
-   - la duración real de cada servicio;
    - qué incluye «Barba» en los combos;
    - la calle que cruza con Constitución;
-   - el número de WhatsApp del local;
+   - cuántos barberos atienden y cómo trabajan con el dueño;
+   - en qué dispositivo va a usar el panel;
    - los productos e insumos que usa y vende;
    - las formas de pago que acepta;
    - el permiso para usar el logo y la foto.
