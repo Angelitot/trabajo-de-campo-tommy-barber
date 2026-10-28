@@ -214,8 +214,23 @@ select.campo{padding:10px 12px}
 .llegar figcaption{margin-top:10px;font-size:15px;color:var(--gris)}
 .llegar-texto{flex:2 1 340px;min-width:0}
 .llegar .tag-seccion{font-size:clamp(60px,7vw,96px)}
+.horarios-aviso{margin:0;padding:16px;border-bottom:2px solid #000;background:#fff;font-weight:700}
+.horarios-aviso span{display:block;font-weight:400;color:var(--gris)}
 .direccion{margin:32px 0 0;font-weight:800;font-stretch:75%;font-size:clamp(28px,3vw,38px);line-height:1.1}
 .botones{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}
+
+/* Galería de cortes */
+.cortes{color:#fff;overflow:hidden}
+.cortes-cab{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:20px 48px}
+.cortes .tag-seccion{color:#fff;-webkit-text-stroke:2px #000;text-shadow:3px 3px 0 #000,6px 6px 0 var(--azul),9px 9px 0 #000}
+.cortes .intro{margin:0 0 6px;max-width:38ch;font-size:19px;line-height:1.45}
+.cortes .intro a{color:#fff;font-weight:700;text-underline-offset:4px}
+.galeria{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:40px 36px;margin:64px 0 0;padding:0;list-style:none}
+.foto{position:relative;margin:0;padding:10px;background:#fff;border:2px solid #000;box-shadow:8px 8px 0 rgba(0,0,0,.55);transform:rotate(-2deg)}
+.galeria li:nth-child(3n+2) .foto{margin-top:28px;transform:rotate(1.5deg)}
+.galeria li:nth-child(3n) .foto{transform:rotate(-.8deg)}
+.foto::before{content:'';position:absolute;z-index:1;top:-14px;left:50%;width:104px;height:28px;margin-left:-52px;background:rgba(233,236,235,.82);border:1px solid rgba(0,0,0,.18);transform:rotate(-4deg)}
+.foto img{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:cover}
 
 /* Pie */
 .pie{color:#fff}
@@ -427,6 +442,87 @@ select.campo{padding:10px 12px}
 .pa-pin.error{animation:sacudir .35s}
 @keyframes sacudir{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
 .pa-pin-msg{min-height:22px;margin:0 0 14px !important;color:var(--rojo);font-size:15px;font-weight:700}
+/* Cambiar el turno desde Mis turnos */
+.rv-cambio{margin:0 0 6px;padding:12px 14px;background:#fff;border:2px solid #000;border-radius:4px}
+.rv-cambio p{margin:0;font-weight:600}
+.rv-hora-actual{border-style:dashed}
+.mt-acciones{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:10px}
+.mt-acciones .link-btn{padding-left:0}
+
+/* Pills de faltas (Atender, Hoy, Turnos y Clientes) */
+.pill-falta{border-color:var(--rojo);color:var(--rojo);background:#fff}
+
+/* Horario */
+.hz-form{flex:2 1 360px}
+.hz-form .segmentado{margin-top:6px}
+.hz-campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:0 16px;margin-top:6px}
+.hz-motivo{grid-column:1 / -1}
+.hz-afectados-txt,.hz-alerta{margin:14px 0 0;padding:10px 12px;border:2px solid var(--rojo);border-radius:4px;background:#fff;font-size:15px;font-weight:600}
+.hz-proximos{flex:3 1 420px;min-width:0}
+.hz-lista{margin:0;padding:0;list-style:none;border-top:3px solid #000}
+.hz-item{padding:14px 0 16px;border-bottom:2px solid #000}
+.hz-item-cab{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px 16px}
+.hz-fechas{margin:0;font-weight:800;font-stretch:75%;font-size:22px;line-height:1.15}
+.hz-que{margin:4px 0 0;color:var(--gris)}
+.hz-item .lista{margin-top:10px;border-top-width:2px}
+.hz-item .hz-alerta{border:0;padding:0;margin-top:12px;background:none;color:var(--rojo)}
+
+/* Clientes */
+.cl-controles{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin-top:28px}
+.cl-buscar{flex:1 1 260px;max-width:420px}
+.cl-lista{margin:16px 0 0;padding:0;list-style:none;border-top:3px solid #000}
+.cl-lista li[hidden]{display:none}
+.cl-item{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:16px;row-gap:2px;width:100%;padding:12px 8px;border:0;border-bottom:2px solid #000;background:none;color:#000;font:inherit;text-align:left;cursor:pointer}
+.cl-item:hover{background:#fff}
+.cl-nombre{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-weight:700;font-size:17px}
+.cl-dato{grid-column:1;font-size:14px;color:var(--gris)}
+.cl-gasto{grid-column:2;grid-row:1 / span 2;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cl-volver{padding-left:0}
+.cl-ficha-cab{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 20px;margin-top:8px}
+.cl-ficha-nombre{margin:0;font-weight:800;font-stretch:75%;font-size:clamp(34px,4vw,48px);line-height:1}
+.cl-ficha-nombre:focus{outline:none}
+.cl-datos{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:2px;margin:20px 0 0;background:#000;border:2px solid #000}
+.cl-datos div{padding:12px 14px;background:var(--chapa)}
+.cl-datos dt{font-size:14px;color:var(--gris)}
+.cl-datos dd{margin:4px 0 0;font-weight:700}
+.cl-hist{margin:10px 0 0;padding:0;list-style:none;border-top:3px solid #000}
+.cl-hist li{display:grid;grid-template-columns:150px minmax(0,1fr) auto auto;align-items:center;gap:6px 16px;padding:10px 4px;border-bottom:1px solid #9AA3A3;font-size:15px}
+.cl-hist-fecha{font-variant-numeric:tabular-nums;color:var(--gris)}
+.cl-hist-precio{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* Reportes */
+.rep-seccion{margin-top:40px}
+.rep-resumen{max-width:72ch;margin:0 0 16px;font-size:16px}
+.rep-sub{margin:28px 0 0;font-weight:800;font-size:18px}
+.rep-mapa-scroll{overflow-x:auto;padding-bottom:4px}
+.rep-mapa{border-collapse:separate;border-spacing:3px;font-variant-numeric:tabular-nums}
+.rep-mapa th{padding:4px 6px;font-size:14px;font-weight:700}
+.rep-mapa thead th{text-align:center}
+.rep-mapa tbody th{text-align:left;padding-right:10px}
+.rep-mapa td{width:56px;height:44px;border-radius:3px;text-align:center;font-weight:700;font-size:15px}
+.rep-mapa .n0{background:#DCE0DF;color:#555D5D}
+.rep-mapa .n1{background:#F2B8BF}
+.rep-mapa .n2{background:#E57A87}
+.rep-mapa .n3{background:var(--rojo);color:#fff}
+.rep-mapa .n4{background:#7A0A1C;color:#fff}
+.rep-meses{display:flex;flex-direction:column;gap:2px;max-width:860px;border-top:3px solid #000}
+.rep-mes{display:grid;grid-template-columns:150px minmax(0,1fr) 140px;align-items:center;column-gap:16px;padding:10px 4px;border-bottom:1px solid #9AA3A3}
+.rep-mes p{margin:0}
+.rep-mes-nombre{font-weight:700}
+.rep-mes-barra{height:22px;background:#DCE0DF;border-radius:3px;overflow:hidden}
+.rep-mes-barra span{display:block;height:100%;background:#000}
+.rep-mes.actual .rep-mes-barra span{background:var(--rojo)}
+.rep-mes-barra span.negativa{background:var(--gris-2)}
+.rep-mes-valor{font-weight:800;font-stretch:75%;font-size:20px;text-align:right;font-variant-numeric:tabular-nums}
+.rep-mes-detalle{grid-column:2 / -1;font-size:14px;color:var(--gris)}
+@media (max-width:560px){
+  .cl-hist li{grid-template-columns:minmax(0,1fr) auto}
+  .cl-hist-fecha{grid-column:1 / -1}
+  .rep-mes{grid-template-columns:minmax(0,1fr) auto}
+  .rep-mes-barra{grid-column:1 / -1;grid-row:2}
+  .rep-mes-detalle{grid-column:1 / -1}
+}
+
 /* Atender: el turno actual en una sola pantalla */
 kbd{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:22px;margin-left:2px;padding:0 6px;border:1.5px solid currentColor;border-radius:4px;font:700 12px/1 var(--fuente);opacity:.8}
 .at-hecho{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;margin-bottom:22px;padding:10px 12px 10px 16px;background:#fff;border:2px solid #000;border-left-width:8px;border-radius:4px}
@@ -507,6 +603,8 @@ kbd{display:inline-flex;align-items:center;justify-content:center;min-width:24px
   .marca-txt{font-size:20px}
 }
 @media (max-width:560px){
+  .galeria{gap:44px}
+  .galeria li:nth-child(3n+2) .foto{margin-top:0}
   .precio-fila{grid-template-columns:minmax(0,1fr);gap:6px;padding:18px 4px}
   .precio-fila .btn{grid-row:auto;justify-self:start;margin-top:6px;order:2}
   .precio-desc{order:1}
