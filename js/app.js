@@ -268,6 +268,9 @@
     return 'Hola ' + primerNombre(t.cliente) + ', te recordamos tu turno de ' + servicioEnFrase(SERV[t.servicio]) + ' en ' + NEGOCIO + ': ' +
       cuandoTurno(t.fecha, t.min, false) + '. Te esperamos en ' + DIRECCION + '. Si no podés venir, avisanos por acá. ¡Gracias!';
   }
+  function msjEsperando(t) {
+    return 'Hola ' + primerNombre(t.cliente) + ', te escribimos de ' + NEGOCIO + ': te estamos esperando para tu turno de las ' + hhmm(t.min) + '. ¿Venís?';
+  }
   function msjCancelacion(t) {
     return 'Hola ' + primerNombre(t.cliente) + ', te escribimos de ' + NEGOCIO + ': tuvimos que cancelar tu turno ' +
       cuandoTurno(t.fecha, t.min, true) + '. ¿Te queda bien otro horario?';
@@ -290,6 +293,8 @@
       estado: ['confirmado', 'atendido', 'novino', 'cancelado'].indexOf(r.estado) >= 0 ? r.estado : 'confirmado',
       medio: r.medio || '', canceladoPor: r.canceladoPor || '', canceladoEn: +r.canceladoEn || 0,
       recordadoEn: +r.recordadoEn || 0, avisadoEn: +r.avisadoEn || 0, creadoEn: +r.creadoEn || 0,
+      // orden: lugar en la fila de Atender cuando el dueño lo pospone; sinTurno: llegó al local sin reservar
+      orden: +r.orden || 0, sinTurno: !!r.sinTurno,
       ejemplo: !!r.ejemplo
     };
   }
@@ -883,6 +888,7 @@
 
   /* ===================== Panel del dueño ===================== */
   var ICONOS = {
+    atender: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.1 15.9M14.5 14.5L20 20M8.1 8.1L12 12"/></svg>',
     hoy: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
     turnos: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     caja: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>',
@@ -891,7 +897,7 @@
     chat: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z"/></svg>'
   };
   var DIENTES = '0,0 ' + Array.from({ length: 25 }, function (_, i) { return (i * 12 + 6) + ',10 ' + (i * 12 + 12) + ',0'; }).join(' ');
-  var TITULOS = { hoy: 'Hoy', turnos: 'Turnos', caja: 'Caja', stock: 'Stock', precios: 'Precios' };
+  var TITULOS = { atender: 'Atender', hoy: 'Hoy', turnos: 'Turnos', caja: 'Caja', stock: 'Stock', precios: 'Precios' };
   var NOMBRE_ESTADO = { confirmado: 'Confirmado', silla: 'En la silla', atendido: 'Cobrado', novino: 'No vino', cancelado: 'Cancelado' };
   var ultimaSemana = [];
 
@@ -912,7 +918,10 @@
     avisoPrecios: '',
     restablecer: false,
     reiniciando: false,
-    preview: null             // mensaje de WhatsApp de un turno de ejemplo
+    preview: null,            // mensaje de WhatsApp de un turno de ejemplo
+    atVer: null,              // Atender: id del turno que se está mirando (null = el actual)
+    llegada: null,            // Atender: { servicio, nombre } de alguien que llegó sin turno
+    deshacer: null            // Atender: última acción, para poder deshacerla
   };
   function npVacio(tipo) { return { nombre: '', tipo: tipo, presentacion: '', unidad: 'unidad', cantidad: '', minimo: '', precio: '', compra: false, costo: '', medio: 'Efectivo' }; }
 
@@ -923,7 +932,7 @@
   function botonWa(t, tipo, texto, clase) {
     var base = ' class="btn ' + clase + ' btn-mini" data-accion="' + tipo + '" data-id="' + esc(t.id) + '" data-foco="' + tipo + '-' + esc(t.id) + '"';
     if (t.ejemplo) return '<button type="button"' + base + '>' + ICONOS.chat + texto + '</button>';
-    var texto2 = tipo === 'avisar' ? msjCancelacion(t) : msjRecordatorio(t);
+    var texto2 = tipo === 'avisar' ? msjCancelacion(t) : tipo === 'esperando' ? msjEsperando(t) : msjRecordatorio(t);
     return '<a ' + atributosWa(telInfo(t.tel).wa, texto2) + base + '>' + ICONOS.chat + texto + '<span class="solo-lector"> (abre WhatsApp)</span></a>';
   }
 
@@ -1636,6 +1645,201 @@
   }
 
   /* ----- Acceso y armado del panel ----- */
+  /* ----- Atender: el turno actual en una sola pantalla, para usar mientras se corta ----- */
+  // La fila de hoy: los turnos que todavía no se cobraron, en el orden en que se atienden.
+  function claveFila(t) { return t.orden || t.min; }
+  function colaHoy(h) {
+    return todosLosTurnos().filter(function (t) { return t.fecha === h.clave && t.estado === 'confirmado'; })
+      .sort(function (a, b) { return claveFila(a) - claveFila(b) || a.min - b.min || (a.codigo < b.codigo ? -1 : 1); });
+  }
+  function kbd(k) { return '<kbd>' + k + '</kbd>'; }
+
+  // Cuándo le toca, dicho como lo diría el dueño
+  function cuandoAtender(t, h) {
+    if (t.sinTurno) return 'Llegó sin turno a las ' + hhmm(t.min);
+    var dif = h.min - t.min;
+    if (dif >= 0 && dif < 5) return 'Le toca ahora, a las ' + hhmm(t.min);
+    if (dif >= 5) return 'Le tocaba a las ' + hhmm(t.min) + ', hace ' + durTxt(dif);
+    return 'Llega a las ' + hhmm(t.min) + ', en ' + durTxt(-dif);
+  }
+
+  function plantillaAtender(h) {
+    var cola = colaHoy(h);
+    var idx = 0;
+    if (P.atVer) {
+      idx = cola.findIndex(function (x) { return x.id === P.atVer; });
+      if (idx < 0) { idx = 0; P.atVer = null; }
+    }
+    var t = cola[idx];
+    var sig = cola[idx + 1];
+    var html = '';
+
+    if (P.deshacer) {
+      html += '<div class="at-hecho" role="status"><p>' + esc(P.deshacer.texto) + '</p>' +
+        '<button type="button" class="btn btn-linea btn-mini" data-accion="at-deshacer" data-foco="at-deshacer">Deshacer ' + kbd('Z') + '</button></div>';
+    }
+
+    var principal;
+    if (!t) {
+      var hoy = todosLosTurnos().filter(function (x) { return x.fecha === h.clave; });
+      var atendidos = hoy.filter(function (x) { return x.estado === 'atendido'; }).length;
+      var cobrado = suma(D.mov.filter(function (m) { return m.fecha === h.clave && m.cat === 'servicio' && m.tipo === 'entrada'; }), 'monto');
+      var futuro = todosLosTurnos().filter(function (x) { return x.fecha > h.clave && x.estado === 'confirmado'; }).sort(porFechaHora)[0];
+      principal = '<section class="at-card at-vacia" id="at-card" tabindex="-1" data-foco="at-card" aria-labelledby="at-vacia-t">' +
+        '<p class="at-etiqueta">Ahora</p>' +
+        '<h2 class="at-nombre" id="at-vacia-t">No queda nadie en la fila</h2>' +
+        '<p class="at-serv">' + (atendidos ? 'Hoy atendiste a ' + plural(atendidos, 'cliente', 'clientes') + ' y cobraste ' + gs(cobrado) + '.' : 'Todavía no hay turnos para atender hoy.') + '</p>' +
+        (futuro ? '<p class="at-extra">Próximo turno: ' + esc(cuandoTurno(futuro.fecha, futuro.min, false)) + ', ' + esc(futuro.cliente) + ' (' + esc(nombreServicio(SERV[futuro.servicio])) + ').</p>' : '') +
+      '</section>';
+    } else {
+      var s = SERV[t.servicio];
+      var tel = telInfo(t.tel);
+      var llego = empezo(t, h) || t.sinTurno;
+      var etiqueta = idx === 0 ? 'Ahora' : idx === 1 ? 'Siguiente' : (idx + 1) + '.º en la fila';
+      var marcas = [];
+      if (t.sinTurno) marcas.push('<span class="pill">Sin turno</span>');
+      if (t.orden) marcas.push('<span class="pill">Pospuesto</span>');
+      if (t.recordadoEn) marcas.push('<span class="pill">Recordado</span>');
+      var extra = [];
+      if (t.tel) extra.push('WhatsApp ' + esc(tel.lindo || t.tel));
+      if (t.nota) extra.push('Nota: ' + esc(t.nota));
+      var medios = MEDIOS.map(function (m, i) {
+        return '<button type="button" class="btn ' + (i === 0 ? 'btn-negro' : 'btn-claro') + ' at-medio" data-accion="at-cobrar" data-id="' + esc(t.id) + '" data-medio="' + m + '" data-foco="at-cobrar-' + m + '" aria-label="Cobrar ' + gs(t.precio) + ' ' + COMO_PAGO[m] + '">' + m + kbd(i + 1) + '</button>';
+      }).join('');
+      var otras = '<button type="button" class="btn btn-linea btn-mini" data-accion="at-novino" data-id="' + esc(t.id) + '" data-foco="at-novino"' + (llego ? '' : ' disabled title="Se puede marcar cuando llegue la hora del turno"') + '>No vino ' + kbd('N') + '</button>' +
+        '<button type="button" class="btn btn-linea btn-mini" data-accion="at-posponer" data-id="' + esc(t.id) + '" data-foco="at-posponer"' + (sig ? '' : ' disabled title="No hay nadie después en la fila"') + '>' + (sig ? 'Pasar después de ' + esc(primerNombre(sig.cliente)) : 'Posponer') + ' ' + kbd('P') + '</button>' +
+        (tel.ok && llego ? botonWa(t, 'esperando', '¿Venís?', 'btn-linea') : '');
+      principal = '<section class="at-card' + (idx === 0 ? ' at-actual' : '') + '" id="at-card" tabindex="-1" data-foco="at-card" aria-labelledby="at-nombre">' +
+        '<div class="at-top"><p class="at-etiqueta">' + etiqueta + '</p><p class="at-cuando">' + cuandoAtender(t, h) + '</p>' + marcas.join('') + '</div>' +
+        '<div class="at-cuerpo"><p class="at-hora">' + hhmm(t.min) + '</p><div class="at-datos">' +
+          '<h2 class="at-nombre" id="at-nombre">' + esc(t.cliente) + '</h2>' +
+          '<p class="at-serv">' + esc(nombreServicio(s)) + ' <span class="suave">· ' + durTxt(t.dur) + '</span></p>' +
+          (extra.length ? '<p class="at-extra">' + extra.join(' · ') + '</p>' : '') +
+        '</div></div>' +
+        '<div class="at-cobro" role="group" aria-label="Cobrar ' + gs(t.precio) + '"><p class="at-cobro-txt">Cobrar <strong>' + gs(t.precio) + '</strong></p><div class="at-medios">' + medios + '</div></div>' +
+        '<div class="at-otras">' + otras + '</div>' +
+      '</section>';
+    }
+
+    var pasos = cola.length > 1
+      ? '<div class="at-pasos"><button type="button" class="btn btn-linea btn-mini" data-accion="at-ant" data-foco="at-ant"' + (idx === 0 ? ' disabled' : '') + '>' + kbd('←') + ' Anterior</button>' +
+        '<p class="at-pos">' + (idx + 1) + ' de ' + cola.length + '</p>' +
+        '<button type="button" class="btn btn-linea btn-mini" data-accion="at-sig" data-foco="at-sig"' + (sig ? '' : ' disabled') + '>Siguiente ' + kbd('→') + '</button>' +
+        (idx > 0 ? '<button type="button" class="link-btn" data-accion="at-actual" data-foco="at-actual">Volver al actual (Esc)</button>' : '') + '</div>'
+      : '';
+
+    var despues = '<section class="at-lado-caja" aria-labelledby="at-despues-t"><h2 class="pa-h3" id="at-despues-t">Después</h2>' +
+      (sig
+        ? '<button type="button" class="at-sig-card" data-accion="at-sig" data-foco="at-sig-card"><span class="at-sig-hora">' + hhmm(sig.min) + '</span><span><span class="at-sig-nombre">' + esc(sig.cliente) + '</span><span class="at-sig-serv">' + esc(nombreServicio(SERV[sig.servicio])) + '</span><span class="at-sig-cuando">' + cuandoAtender(sig, h) + '</span></span></button>'
+        : '<p class="vacio">Nadie más por ahora.</p>') +
+      '</section>';
+
+    var fila = cola.length
+      ? '<ol class="at-fila">' + cola.map(function (x, i) {
+          return '<li><button type="button" class="at-fila-item' + (i === idx ? ' sel' : '') + '" data-accion="at-ir" data-id="' + esc(x.id) + '" data-foco="at-ir-' + esc(x.id) + '"' + (i === idx ? ' aria-current="true"' : '') + '>' +
+            '<span class="at-fila-hora">' + hhmm(x.min) + '</span><span class="at-fila-nombre">' + esc(x.cliente) + '</span><span class="at-fila-serv">' + esc(SERV[x.servicio].nombre) + '</span></button></li>';
+        }).join('') + '</ol>'
+      : '<p class="vacio">La fila está vacía.</p>';
+
+    var llegada;
+    if (P.llegada) {
+      llegada = '<div class="at-llegada" role="group" aria-labelledby="at-llegada-t"><p class="at-llegada-t" id="at-llegada-t">Llegó alguien sin turno</p>' +
+        '<label class="campo-label" for="at-l-serv">Servicio</label><select class="campo" id="at-l-serv" data-campo="llegada.servicio">' +
+          SERVICIOS.map(function (x) { return '<option value="' + x.id + '"' + (P.llegada.servicio === x.id ? ' selected' : '') + '>' + esc(nombreServicio(x)) + ', ' + gs(x.precio) + '</option>'; }).join('') + '</select>' +
+        '<label class="campo-label" for="at-l-nombre">Nombre (si querés)</label><input class="campo" id="at-l-nombre" type="text" autocomplete="off" maxlength="40" data-campo="llegada.nombre" value="' + esc(P.llegada.nombre) + '">' +
+        '<div class="at-llegada-botones"><button type="button" class="btn btn-negro btn-mini" data-accion="at-llegada-agregar" data-foco="at-llegada-agregar">Sumar a la fila</button>' +
+        '<button type="button" class="link-btn" data-accion="at-llegada-cancelar">Cancelar</button></div></div>';
+    } else {
+      llegada = '<button type="button" class="btn btn-linea btn-mini at-llegada-btn" data-accion="at-llegada-abrir" data-foco="at-llegada-abrir">+ Llegó alguien sin turno ' + kbd('A') + '</button>';
+    }
+
+    return html +
+      '<div class="at">' +
+        '<div class="at-principal">' + principal + pasos + '</div>' +
+        '<div class="at-lado">' + despues +
+          '<section class="at-lado-caja" aria-labelledby="at-fila-t"><h2 class="pa-h3" id="at-fila-t">La fila de hoy</h2>' + fila + llegada + '</section>' +
+        '</div>' +
+      '</div>' +
+      '<p class="at-atajos">Atajos del teclado: ' + kbd('Espacio') + ' o ' + kbd('→') + ' siguiente · ' + kbd('←') + ' anterior · ' + kbd('Esc') + ' el actual · ' +
+        kbd('1') + ' ' + kbd('2') + ' ' + kbd('3') + ' cobrar · ' + kbd('N') + ' no vino · ' + kbd('P') + ' pasar después · ' + kbd('A') + ' sin turno · ' + kbd('Z') + ' deshacer</p>';
+  }
+
+  // Acciones de Atender. Todas dejan la pantalla en el turno actual y se pueden deshacer.
+  // En el celular, el menú del panel queda arriba: al abrir Atender se baja directo al cliente
+  function atAlFrente() {
+    var c = document.getElementById('at-card');
+    if (c && P.vista === 'atender' && window.matchMedia('(max-width: 760px)').matches) c.scrollIntoView({ block: 'start' });
+  }
+  function atMover(paso) {
+    var cola = colaHoy(ahoraPY());
+    if (!cola.length) return;
+    var idx = P.atVer ? Math.max(0, cola.findIndex(function (x) { return x.id === P.atVer; })) : 0;
+    var nuevo = Math.min(cola.length - 1, Math.max(0, idx + paso));
+    P.atVer = nuevo === 0 ? null : cola[nuevo].id;
+  }
+  function atCobrar(id, medio) {
+    var t = buscarTurno(id);
+    if (!t || t.estado !== 'confirmado') return;
+    var mov = cobrarTurno(id, medio);
+    P.deshacer = { tipo: 'cobrar', id: id, movId: mov.id, texto: 'Cobraste a ' + primerNombre(t.cliente) + ': ' + gs(t.precio) + ' ' + COMO_PAGO[medio] + '.' };
+    P.atVer = null;
+    renderHeroTurno();
+  }
+  function atNoVino(id) {
+    var t = buscarTurno(id);
+    if (!t || t.estado !== 'confirmado' || !(empezo(t, ahoraPY()) || t.sinTurno)) return;
+    t.estado = 'novino';
+    guardarTurno(t);
+    P.deshacer = { tipo: 'novino', id: id, texto: primerNombre(t.cliente) + ' quedó como «no vino».' };
+    P.atVer = null;
+  }
+  function atPosponer(id) {
+    var cola = colaHoy(ahoraPY());
+    var i = cola.findIndex(function (x) { return x.id === id; });
+    if (i < 0 || !cola[i + 1]) return;
+    var t = cola[i];
+    var antes = t.orden;
+    t.orden = claveFila(cola[i + 1]) + 0.1;
+    guardarTurno(t);
+    P.deshacer = { tipo: 'posponer', id: id, antes: antes, texto: primerNombre(t.cliente) + ' pasa después de ' + primerNombre(cola[i + 1].cliente) + '.' };
+    P.atVer = null;
+  }
+  function atAgregarLlegada() {
+    var h = ahoraPY();
+    var s = SERV[P.llegada.servicio] || SERVICIOS[0];
+    var nombre = P.llegada.nombre.trim() || 'Cliente sin turno';
+    var codigo = nuevoCodigo();
+    var t = normalizarTurno({ id: codigo, codigo: codigo, servicio: s.id, fecha: h.clave, min: h.min, precio: s.precio, dur: s.min, cliente: nombre, creadoEn: Date.now(), sinTurno: true });
+    D.turnos.push(t);
+    guardarDatos();
+    P.llegada = null;
+    P.deshacer = { tipo: 'llegada', id: t.id, texto: nombre + ' se sumó a la fila (' + nombreServicio(s) + ').' };
+  }
+  function atDeshacer() {
+    var d = P.deshacer;
+    if (!d) return;
+    var t = buscarTurno(d.id);
+    if (d.tipo === 'llegada') {
+      D.turnos = D.turnos.filter(function (x) { return x.id !== d.id; });
+      guardarDatos();
+    } else if (t) {
+      if (d.tipo === 'cobrar') {
+        t.estado = 'confirmado'; t.medio = '';
+        D.mov = D.mov.filter(function (m) { return m.id !== d.movId; });
+        guardarDatos();
+      } else if (d.tipo === 'novino') {
+        t.estado = 'confirmado';
+      } else if (d.tipo === 'posponer') {
+        t.orden = d.antes;
+      }
+      guardarTurno(t);
+      P.atVer = d.tipo === 'posponer' ? null : t.id;
+      if (P.atVer === (colaHoy(ahoraPY())[0] || {}).id) P.atVer = null;
+    }
+    P.deshacer = null;
+    renderHeroTurno();
+  }
+
   function plantillaAcceso() {
     var teclas = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'Borrar'].map(function (k) {
       if (k === '') return '<span></span>';
@@ -1661,10 +1865,10 @@
     } else {
       var h = ahoraPY();
       var est = estadoLocal(h);
-      var nav = ['hoy', 'turnos', 'caja', 'stock', 'precios'].map(function (k) {
+      var nav = ['atender', 'hoy', 'turnos', 'caja', 'stock', 'precios'].map(function (k) {
         return '<button type="button" data-accion="vista" data-v="' + k + '" data-foco="v-' + k + '"' + (P.vista === k ? ' aria-current="page"' : '') + '>' + ICONOS[k] + TITULOS[k] + '</button>';
       }).join('');
-      var plantillas = { hoy: plantillaHoy, turnos: plantillaTurnos, caja: plantillaCaja, stock: plantillaStock, precios: plantillaPrecios };
+      var plantillas = { atender: plantillaAtender, hoy: plantillaHoy, turnos: plantillaTurnos, caja: plantillaCaja, stock: plantillaStock, precios: plantillaPrecios };
       var cuerpo = (plantillas[P.vista] || plantillaHoy)(h);
       cont.innerHTML = '<div class="pa">' +
         '<aside class="pa-aside"><div class="pa-marca"><span class="logo logo-56" aria-hidden="true"></span><div><p class="pa-marca-nombre condensada">Tommy Barber</p><p class="pa-marca-sub">Panel del dueño</p></div></div>' +
@@ -1707,10 +1911,11 @@
     var s = SERV[t.servicio];
     t.estado = 'atendido';
     t.medio = medio;
-    registrarCaja({ tipo: 'entrada', cat: 'servicio', concepto: nombreServicio(s) + ', ' + t.cliente, monto: t.precio, medio: medio, turno: t.id });
+    var mov = registrarCaja({ tipo: 'entrada', cat: 'servicio', concepto: nombreServicio(s) + ', ' + t.cliente, monto: t.precio, medio: medio, turno: t.id });
     guardarTurno(t);
     guardarDatos();
     P.abierto = null;
+    return mov;
   }
 
   function anotar() {
@@ -1729,11 +1934,12 @@
     else if (P.pin.length < 4) P.pin += k;
     if (P.pin.length === 4) {
       if (P.pin === PIN_DUENO) {
-        P.acceso = true; P.pin = ''; P.vista = 'hoy';
+        P.acceso = true; P.pin = ''; P.vista = location.hash === '#atender' ? 'atender' : 'hoy';
         renderPanel();
         window.scrollTo(0, 0);
         var t = document.getElementById('pa-titulo');
         if (t) t.focus({ preventScroll: true });
+        atAlFrente();
         return;
       }
       P.pin = '';
@@ -1779,7 +1985,7 @@
   /* ----- Vista previa de WhatsApp (turnos de ejemplo) ----- */
   var modalEl = document.getElementById('modal');
   function abrirPreview(t, tipo, volverA) {
-    P.preview = { tel: telInfo(t.tel).lindo || t.tel, texto: tipo === 'avisar' ? msjCancelacion(t) : msjRecordatorio(t), volverA: volverA };
+    P.preview = { tel: telInfo(t.tel).lindo || t.tel, texto: tipo === 'avisar' ? msjCancelacion(t) : tipo === 'esperando' ? msjEsperando(t) : msjRecordatorio(t), volverA: volverA };
     modalEl.hidden = false;
     modalEl.innerHTML = '<div class="modal-fondo" data-accion="cerrar-preview"></div>' +
       '<div class="modal-caja" role="dialog" aria-modal="true" aria-labelledby="modal-titulo" aria-describedby="modal-nota">' +
@@ -1816,9 +2022,11 @@
     if (a === 'barra') { marcarBarra(+b.getAttribute('data-barra')); return; }
     if (a === 'vista') {
       P.vista = b.getAttribute('data-v'); P.abierto = null; P.accionProd = null; P.avisoCaja = ''; P.avisoStock = ''; P.avisoPrecios = ''; P.restablecer = false;
+      P.atVer = null; P.llegada = null; P.deshacer = null;
       renderPanel('v-' + P.vista);
       var main = document.getElementById('pa-main');
       if (main && main.getBoundingClientRect().top < 0) main.scrollIntoView({ block: 'start' });
+      atAlFrente();
       return;
     }
     if (a === 'salir') { P.acceso = false; P.pin = ''; P.pinError = false; P.reiniciando = false; renderPanel(); window.scrollTo(0, 0); return; }
@@ -1864,6 +2072,22 @@
       var focoWa = b.getAttribute('data-foco');
       if (t.ejemplo) { renderPanel(); abrirPreview(t, a, focoWa); }
       else setTimeout(function () { renderPanel(focoWa); }, 300); // deja que se abra WhatsApp antes de redibujar
+      return;
+    }
+    if (a === 'at-sig') { atMover(1); renderPanel('at-card'); return; }
+    if (a === 'at-ant') { atMover(-1); renderPanel('at-card'); return; }
+    if (a === 'at-actual') { P.atVer = null; renderPanel('at-card'); return; }
+    if (a === 'at-ir') { P.atVer = id; atMover(0); renderPanel('at-card'); return; }
+    if (a === 'at-cobrar') { atCobrar(id, b.getAttribute('data-medio')); renderPanel('at-card'); return; }
+    if (a === 'at-novino') { atNoVino(id); renderPanel('at-card'); return; }
+    if (a === 'at-posponer') { atPosponer(id); renderPanel('at-card'); return; }
+    if (a === 'at-deshacer') { atDeshacer(); renderPanel('at-card'); return; }
+    if (a === 'at-llegada-abrir') { P.llegada = { servicio: 'corte', nombre: '' }; renderPanel('at-l-serv'); return; }
+    if (a === 'at-llegada-cancelar') { P.llegada = null; renderPanel('at-llegada-abrir'); return; }
+    if (a === 'at-llegada-agregar') { atAgregarLlegada(); renderPanel('at-card'); return; }
+    if (a === 'esperando') {
+      t = buscarTurno(id);
+      if (t && t.ejemplo) abrirPreview(t, 'esperando', b.getAttribute('data-foco'));
       return;
     }
     if (a === 'precios-guardar') { if (guardarCambiosPrecios()) renderPanel('pa-titulo'); return; }
@@ -1961,9 +2185,41 @@
       else if (e.key === 'Tab') { e.preventDefault(); var c = document.getElementById('modal-cerrar'); if (c) c.focus(); }
       return;
     }
+    if (!panelEl.hidden && P.acceso && P.vista === 'atender') { teclaAtender(e); return; }
     if (panelEl.hidden || P.acceso || e.ctrlKey || e.metaKey || e.altKey) return;
     if (/^[0-9]$/.test(e.key)) { e.preventDefault(); tocarTecla(e.key); }
     else if (e.key === 'Backspace') { e.preventDefault(); tocarTecla('Borrar'); }
+  });
+
+  // Atajos de Atender: el dueño pasa de un cliente a otro y cobra sin buscar botones
+  function teclaAtender(e) {
+    var enCampo = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
+    if (enCampo) {
+      if (e.key === 'Escape' && P.llegada) { e.preventDefault(); P.llegada = null; renderPanel('at-llegada-abrir'); }
+      return;
+    }
+    if (e.altKey) return;
+    var k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if ((e.ctrlKey || e.metaKey) && k !== 'z') return;
+    var cola = colaHoy(ahoraPY());
+    var actual = P.atVer ? buscarTurno(P.atVer) : cola[0];
+    var hecho = true;
+    if (k === ' ' || k === 'ArrowRight') atMover(e.shiftKey ? -1 : 1);
+    else if (k === 'ArrowLeft') atMover(-1);
+    else if (k === 'Escape' || k === 'Home') P.atVer = null;
+    else if (k === '1' || k === '2' || k === '3') { if (actual) atCobrar(actual.id, MEDIOS[+k - 1]); }
+    else if (k === 'n') { if (actual) atNoVino(actual.id); }
+    else if (k === 'p') { if (actual) atPosponer(actual.id); }
+    else if (k === 'z') atDeshacer();
+    else if (k === 'a') { e.preventDefault(); P.llegada = { servicio: 'corte', nombre: '' }; renderPanel('at-l-serv'); return; }
+    else hecho = false;
+    if (!hecho) return;
+    e.preventDefault();
+    renderPanel('at-card');
+  }
+  // Que la barra espaciadora no "toque" el botón que quedó con foco: en Atender, pasa al siguiente
+  document.addEventListener('keyup', function (e) {
+    if (e.key === ' ' && !panelEl.hidden && P.acceso && P.vista === 'atender' && !/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) e.preventDefault();
   });
 
   // Si el sitio está abierto en otra pestaña, se actualiza cuando alguien reserva o cancela
@@ -1986,7 +2242,8 @@
 
   /* ===================== Navegación entre sitio y panel ===================== */
   function mostrarVista() {
-    var enPanel = location.hash === '#panel';
+    var enPanel = location.hash === '#panel' || location.hash === '#atender';
+    if (location.hash === '#atender') { P.vista = 'atender'; P.atVer = null; }
     document.getElementById('sitio').hidden = enPanel;
     panelEl.hidden = !enPanel;
     document.title = enPanel ? 'Panel del dueño | Tommy Barber' : 'Tommy Barber | Barbería en Quiindy';
@@ -2018,6 +2275,8 @@
       var p = document.getElementById('pa-poste');
       if (t) t.textContent = e.corto;
       if (p) p.classList.toggle('abierto', e.abierto);
+      // En Atender se actualiza el "le toca en X min" y quién es el actual
+      if (P.vista === 'atender' && !P.llegada && !P.preview) renderPanel();
     }
   }, 30000);
 })();

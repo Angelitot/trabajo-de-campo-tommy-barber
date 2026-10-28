@@ -6,6 +6,7 @@ Trabajo de campo: diseño web para **Tommy Barber**, barbería de Quiindy (Const
 - **Reserva de turnos:** servicio o combo, día y hora según el horario real del local, nombre y WhatsApp, y comprobante.
 - **Mis turnos:** el cliente ve los turnos que reservó desde su celular y puede cancelarlos mientras no hayan empezado.
 - **Panel del dueño:**
+  - **Atender:** el turno que corresponde ahora, en grande, con todo para cobrar, marcar «no vino» o pasarlo después; el siguiente al lado y la fila del día. Se usa con una mano o con el teclado (espacio y flechas para moverse, 1-2-3 para cobrar). Se entra directo con `#atender`.
   - **Hoy:** agenda del día para cobrar, marcar «no vino» o cancelar, la caja del día y lo que entró en la semana.
   - **Turnos:** los turnos de los próximos días, con recordatorio por WhatsApp, cancelación y aviso al cliente.
   - **Caja:** lo que entra, los gastos y la ganancia de hoy, la semana o el mes.
@@ -28,9 +29,10 @@ Es un prototipo que funciona en el navegador, sin servidor: los turnos, la caja,
 2. Arriba aparece «Tenés turno…». En **Mis turnos** se ve el turno y se puede cancelar.
 3. Entrá al panel y abrí **Turnos**: tocá **Recordar por WhatsApp** en tu turno y se abre WhatsApp con el recordatorio para tu número.
 4. Cancelalo desde el panel: el sistema ofrece **Avisar por WhatsApp** con el mensaje de cancelación, y en **Mis turnos** dice que la barbería lo canceló.
-5. En **Stock**, cargá un insumo nuevo, usá uno y registrá una compra con lo que pagaste: el gasto aparece en **Caja**.
-6. En **Precios**, cambiá el precio de un corte y guardá: el sitio lo muestra enseguida. Los turnos ya reservados mantienen el precio con que se reservaron.
-7. Al terminar, **Reiniciar datos de ejemplo** (abajo del menú del panel) vuelve la agenda, la caja y el stock al principio, y en **Precios** está **Volver a la lista original del local**.
+5. Abrí **Atender**: aparece el cliente que corresponde ahora. Probá Espacio y las flechas para moverte, **1** para cobrar en efectivo y **Z** para deshacer. Con **A** sumás a alguien que llegó sin turno.
+6. En **Stock**, cargá un insumo nuevo, usá uno y registrá una compra con lo que pagaste: el gasto aparece en **Caja**.
+7. En **Precios**, cambiá el precio de un corte y guardá: el sitio lo muestra enseguida. Los turnos ya reservados mantienen el precio con que se reservaron.
+8. Al terminar, **Reiniciar datos de ejemplo** (abajo del menú del panel) vuelve la agenda, la caja y el stock al principio, y en **Precios** está **Volver a la lista original del local**.
 
 Los turnos con números del tipo `0981 000 …` son de ejemplo: en esos, «Recordar» muestra cómo quedaría el mensaje en vez de abrir WhatsApp.
 
@@ -59,6 +61,7 @@ pip install playwright
 python -m playwright install chromium
 python pruebas/probar_todo.py
 python pruebas/probar_precios.py
+python pruebas/probar_atender.py
 ```
 
 Al final dicen «todo bien» o qué falló. Las capturas quedan en `pruebas/capturas/`.
