@@ -5,6 +5,9 @@ dist/
 publico/
 node_modules/
 
+# Capturas que generan las pruebas
+pruebas/capturas/
+
 # Archivos del sistema y de editores
 .DS_Store
 Thumbs.db
