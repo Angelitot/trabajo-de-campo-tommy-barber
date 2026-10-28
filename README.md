@@ -12,6 +12,8 @@ Trabajo de campo: diseño web para **Tommy Barber**, barbería de Quiindy (Const
   - **Stock:** insumos y productos para vender; el dueño los carga, resta lo que usa o vende y suma lo que compra.
   - **Precios:** el dueño cambia el precio y la duración de cada servicio o combo, o vuelve a la lista original del local.
 
+La documentación completa del trabajo (relevamiento, requerimientos, diseño, cómo está hecho el sistema, pruebas y capturas) está en [docs/DOCUMENTACION.md](docs/DOCUMENTACION.md).
+
 Es un prototipo que funciona en el navegador, sin servidor: los turnos, la caja, el stock y los precios se guardan en el navegador (localStorage). Los avisos por WhatsApp abren WhatsApp con el mensaje listo (`wa.me`): el dueño solo toca Enviar.
 
 ## Cómo abrirlo
@@ -45,6 +47,21 @@ Los turnos con números del tipo `0981 000 …` son de ejemplo: en esos, «Recor
 | `herramientas/publicar.mjs` | Arma `publico/`, la versión optimizada que se publica |
 | `package.json` | Herramientas para armar la versión optimizada (`npm run build`) |
 | `despliegue.yaml` | Configuración de publicación del sitio (blueprint) |
+| `docs/` | Documentación del proyecto, con capturas |
+| `pruebas/` | Pruebas automáticas del sitio y del panel |
+
+## Pruebas automáticas
+
+Recorren el sitio y el panel en un navegador real, en computadora y en celular. Hace falta Python:
+
+```
+pip install playwright
+python -m playwright install chromium
+python pruebas/probar_todo.py
+python pruebas/probar_precios.py
+```
+
+Al final dicen «todo bien» o qué falló. Las capturas quedan en `pruebas/capturas/`.
 
 ## Dónde cambiar los datos del local
 
