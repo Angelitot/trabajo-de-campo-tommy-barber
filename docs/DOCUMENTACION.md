@@ -4,7 +4,7 @@ Trabajo de campo: sitio web con reserva de turnos y panel de administración par
 
 - **Sitio publicado:** https://tommy-barber.onrender.com
 - **Código:** este repositorio. Cómo abrirlo y probarlo está en el [README](../README.md).
-- **Período documentado:** del 20 al 27 de octubre de 2026.
+- **Período documentado:** del 20 al 28 de octubre de 2026.
 
 ![Inicio del sitio en computadora](capturas/01-inicio.webp)
 
@@ -79,6 +79,8 @@ La lista no indica cuánto dura cada servicio. Las duraciones del sistema son es
 **Dueño**
 
 - Entrar al panel con un PIN.
+- Atender rápido mientras corta: ver de un vistazo el turno que corresponde ahora y el siguiente, y cobrar, marcar «no vino» o pasarlo después con un toque o una tecla.
+- Sumar a la fila a alguien que llega sin turno, ya que el dueño atiende por orden de llegada.
 - Ver la agenda del día; cobrar cada turno indicando el medio de pago, marcar «no vino» o cancelar.
 - Ver los turnos de los próximos días y mandar recordatorios por WhatsApp.
 - Cancelar un turno y avisarle al cliente por WhatsApp.
@@ -105,6 +107,7 @@ La lista no indica cuánto dura cada servicio. Las duraciones del sistema son es
 | 27/10/2026 | Precios desde el panel | El dueño cambia precios y duraciones; los turnos ya reservados conservan su precio. |
 | 27/10/2026 | Publicación | Versión optimizada, sitio publicado y base de datos PostgreSQL creada, vacía, para la próxima etapa. |
 | 27/10/2026 | Documentación | Este documento y las pruebas automáticas en el repositorio. |
+| 28/10/2026 | Pantalla Atender | El turno actual y el siguiente en una sola pantalla, con atajos de teclado, deshacer y clientes sin turno. |
 
 ## 5. Diseño visual
 
@@ -121,7 +124,7 @@ La identidad sale de la fachada del local: pared de ladrillo, persiana metálica
 
 <p>
 <img src="capturas/13-celular-inicio.webp" width="300" alt="Inicio en celular">
-<img src="capturas/14-celular-panel.webp" width="300" alt="Panel en celular">
+<img src="capturas/14-celular-panel.webp" width="300" alt="Pantalla Atender en celular">
 </p>
 
 ## 6. Cómo está hecho el sistema
@@ -174,7 +177,7 @@ El código está dentro de una función que se ejecuta sola, para no ensuciar el
 3. **Turnos:** carga y guardado, cálculo de horarios libres y estado de cada turno.
 4. **Datos de ejemplo:** agenda, caja y stock para que el panel tenga contenido en la presentación.
 5. **Sitio:** estado del local, precios, horarios y el asistente de reserva.
-6. **Panel:** acceso con PIN y las vistas Hoy, Turnos, Caja, Stock y Precios.
+6. **Panel:** acceso con PIN y las vistas Atender, Hoy, Turnos, Caja, Stock y Precios.
 
 La interfaz se arma con plantillas de texto y responde a los clics con un único manejador por zona, que lee el atributo `data-accion` del botón tocado.
 
@@ -201,6 +204,8 @@ Mientras no haya base de datos, todo se guarda en el `localStorage` del navegado
 | `medio` | Medio de pago, si se cobró |
 | `canceladoPor`, `canceladoEn` | Quién lo canceló (`cliente` o `barberia`) y cuándo |
 | `recordadoEn`, `avisadoEn` | Cuándo se mandó el recordatorio o el aviso de cancelación |
+| `orden` | Lugar en la fila de Atender, si el dueño lo pasó después de otro |
+| `sinTurno` | Si es alguien que llegó al local sin reservar |
 
 **Movimiento de caja:** fecha, hora, tipo (`entrada` o `salida`), categoría (servicio, venta de producto, compra de stock, gasto u otro ingreso), concepto, monto, medio de pago y, si corresponde, el turno que lo generó.
 
@@ -274,7 +279,34 @@ Se entra con **Acceso del dueño**, al pie de la página. El PIN de prueba es **
 
 ![Acceso con PIN](capturas/07-panel-acceso.webp)
 
-**Hoy.** Agenda del día en orden. Cada turno se puede cobrar eligiendo el medio de pago, marcar como «no vino» o cancelar. La pantalla también muestra lo que entró en el día y en la semana, y un aviso si mañana hay turnos sin recordatorio.
+**Atender.** Es la pantalla para usar mientras se corta. Al abrirla ya aparece, en grande, el cliente que corresponde ahora: el primero de la fila del día que todavía no se cobró. Muestra la hora, el nombre, el servicio, cuánto falta o cuánto atraso tiene, y los botones para resolverlo sin buscar nada:
+
+- **Cobrar** con un solo toque, eligiendo el medio de pago: Efectivo, Transferencia o Billetera. El cobro entra solo a la caja.
+- **No vino**, cuando ya pasó la hora del turno.
+- **Pasar después de…**: si el cliente no llegó y llega el siguiente, el actual pasa detrás del siguiente, como en una fila por orden de llegada.
+- **¿Venís?**: abre WhatsApp con «te estamos esperando» para el cliente atrasado.
+- **Deshacer**, por si tocó algo sin querer.
+
+Al lado se ven el siguiente y la fila completa del día. Para alguien que llega sin turno está **Llegó alguien sin turno**: se elige el servicio y se suma a la fila.
+
+Todo se puede hacer con el teclado, sin el mouse:
+
+| Tecla | Qué hace |
+|---|---|
+| Espacio o → | Pasa al siguiente de la fila |
+| ← | Vuelve al anterior |
+| Esc | Vuelve al cliente actual |
+| 1, 2, 3 | Cobra en efectivo, por transferencia o con billetera |
+| N | No vino |
+| P | Lo pasa después del siguiente |
+| A | Alguien sin turno |
+| Z | Deshace lo último |
+
+Con la dirección `…/#atender` se entra directo a esta pantalla: sirve para dejarla guardada en el celular o la computadora del local.
+
+![Panel: Atender](capturas/15-panel-atender.webp)
+
+**Hoy.** Agenda completa del día en orden. Cada turno se puede cobrar eligiendo el medio de pago, marcar como «no vino» o cancelar. La pantalla también muestra lo que entró en el día y en la semana, y un aviso si mañana hay turnos sin recordatorio.
 
 ![Panel: Hoy](capturas/08-panel-hoy.webp)
 
@@ -323,7 +355,7 @@ Medición con Lighthouse en modo celular, con conexión móvil simulada:
 
 ## 9. Pruebas
 
-La carpeta `pruebas/` tiene dos recorridos automáticos con Playwright, que abren el sitio en un navegador real con el reloj fijo en el martes 27/10/2026 a las 10:05 (hora de Paraguay). Cada recorrido se hace en computadora y en celular.
+La carpeta `pruebas/` tiene tres recorridos automáticos con Playwright, que abren el sitio en un navegador real con el reloj fijo en el martes 27/10/2026 a las 10:05 (hora de Paraguay). Cada recorrido se hace en computadora y en celular.
 
 - **`probar_todo.py`** (50 comprobaciones por pantalla) prueba:
   - los precios oficiales;
@@ -336,6 +368,7 @@ La carpeta `pruebas/` tiene dos recorridos automáticos con Playwright, que abre
   - el stock: cargar, usar, vender y comprar, y que no deje usar más de lo que hay;
   - que las ventas y compras del stock lleguen a la caja;
   - que no haya errores en la consola.
+- **`probar_atender.py`** prueba la pantalla Atender: la entrada directa con `#atender`, moverse con Espacio y las flechas, cobrar con la tecla 1 y que entre a la caja, deshacer, pasar a alguien después del siguiente, «no vino» solo después de la hora, sumar a alguien sin turno y vaciar la fila.
 - **`probar_precios.py`** prueba el cambio de precios desde el panel: la validación, el guardado, el historial, el sitio actualizado, que los turnos reservados conserven su precio y la vuelta a la lista original.
 
 Cómo correrlas:
@@ -345,6 +378,7 @@ pip install playwright
 python -m playwright install chromium
 python pruebas/probar_todo.py
 python pruebas/probar_precios.py
+python pruebas/probar_atender.py
 ```
 
 También se pueden correr contra la versión publicada, pasando la dirección como argumento. Las capturas quedan en `pruebas/capturas/`.

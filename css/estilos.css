@@ -427,6 +427,67 @@ select.campo{padding:10px 12px}
 .pa-pin.error{animation:sacudir .35s}
 @keyframes sacudir{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
 .pa-pin-msg{min-height:22px;margin:0 0 14px !important;color:var(--rojo);font-size:15px;font-weight:700}
+/* Atender: el turno actual en una sola pantalla */
+kbd{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:22px;margin-left:2px;padding:0 6px;border:1.5px solid currentColor;border-radius:4px;font:700 12px/1 var(--fuente);opacity:.8}
+.at-hecho{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;margin-bottom:22px;padding:10px 12px 10px 16px;background:#fff;border:2px solid #000;border-left-width:8px;border-radius:4px}
+.at-hecho p{margin:0;font-weight:700}
+.at{display:flex;flex-wrap:wrap;align-items:flex-start;gap:32px 40px}
+.at-principal{flex:3 1 520px;min-width:0}
+.at-lado{flex:2 1 300px;min-width:0;display:flex;flex-direction:column;gap:28px}
+.at-card{padding:22px 24px 24px;background:#fff;border:3px solid #000;border-radius:6px;box-shadow:8px 8px 0 #000}
+.at-card:focus{outline:none}
+.at-card:focus-visible{outline:none}
+.at-top{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.at-etiqueta{margin:0;padding:5px 10px;border-radius:3px;background:#000;color:#fff;font-weight:800;font-stretch:75%;font-size:16px;line-height:1;letter-spacing:.05em;text-transform:uppercase}
+.at-actual .at-etiqueta{background:var(--rojo)}
+.at-cuando{margin:0;font-weight:700}
+.at-cuerpo{display:flex;align-items:baseline;gap:6px 22px;margin-top:16px}
+.at-hora{margin:0;font-weight:800;font-stretch:62%;font-size:clamp(56px,6.5vw,88px);line-height:.85;font-variant-numeric:tabular-nums}
+.at-datos{min-width:0}
+.at-nombre{margin:0;font-weight:800;font-stretch:75%;font-size:clamp(34px,4vw,52px);line-height:1;overflow-wrap:anywhere}
+.at-serv{margin:8px 0 0;font-size:19px;font-weight:600}
+.at-serv .suave{font-weight:400;color:var(--gris)}
+.at-extra{margin:6px 0 0;font-size:15px;color:var(--gris)}
+.at-cobro{margin-top:22px;padding-top:18px;border-top:2px solid #000}
+.at-cobro-txt{margin:0 0 12px;font-size:18px}
+.at-cobro-txt strong{font-weight:800;font-stretch:75%;font-size:26px}
+.at-medios{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.at-medio{min-height:62px;padding:10px 12px;font-size:17px}
+.at-otras{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+.at-pasos{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin-top:26px}
+.at-pos{margin:0;font-weight:700;font-variant-numeric:tabular-nums}
+.at-lado-caja .pa-h3{margin-bottom:10px}
+.at-sig-card{display:flex;align-items:flex-start;gap:16px;width:100%;padding:14px 16px;border:2px solid #000;border-radius:4px;background:#fff;color:#000;font:inherit;text-align:left;cursor:pointer}
+.at-sig-card:hover{background:#F6F7F6}
+.at-sig-hora{font-weight:800;font-stretch:62%;font-size:36px;line-height:.9;font-variant-numeric:tabular-nums}
+.at-sig-nombre{display:block;font-weight:800;font-size:19px;line-height:1.2}
+.at-sig-serv{display:block;font-size:15px;color:var(--gris)}
+.at-sig-cuando{display:block;margin-top:4px;font-size:14px;font-weight:700}
+.at-fila{margin:0;padding:0;list-style:none;border-top:3px solid #000}
+.at-fila-item{display:grid;grid-template-columns:56px minmax(0,1fr);column-gap:12px;width:100%;padding:9px 8px;border:0;border-bottom:2px solid #000;background:none;color:#000;font:inherit;text-align:left;cursor:pointer}
+.at-fila-item:hover{background:#fff}
+.at-fila-item.sel{background:#000;color:#fff}
+.at-fila-hora{grid-row:span 2;font-weight:800;font-stretch:62%;font-size:24px;line-height:1.15;font-variant-numeric:tabular-nums}
+.at-fila-nombre{font-weight:700;line-height:1.25}
+.at-fila-serv{font-size:14px;color:var(--gris)}
+.at-fila-item.sel .at-fila-serv{color:#C5CBCB}
+.at-llegada-btn{margin-top:14px}
+.at-llegada{margin-top:14px;padding:14px 16px 16px;background:#fff;border:2px solid #000;border-radius:4px}
+.at-llegada-t{margin:0;font-weight:800;font-stretch:75%;font-size:20px}
+.at-llegada label{display:block;margin:12px 0 6px;font-weight:700;font-size:15px}
+.at-llegada-botones{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:14px}
+.at-atajos{margin:32px 0 0;font-size:14px;line-height:2;color:var(--gris)}
+.at-vacia .at-nombre{font-size:clamp(30px,3.4vw,44px)}
+@media (hover:none){
+  kbd,.at-atajos{display:none}
+}
+@media (max-width:560px){
+  .at-card{padding:18px 16px 20px;box-shadow:5px 5px 0 #000}
+  .at-cuerpo{flex-direction:column}
+  .at-hora{font-size:52px}
+  .at-medios{grid-template-columns:minmax(0,1fr)}
+  .at-medio{min-height:56px}
+}
 .pa-teclado{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .tecla{min-height:56px;border:2px solid #000;border-radius:4px;background:#fff;color:#000;font-weight:800;font-stretch:75%;font-size:26px;cursor:pointer}
 .tecla:hover{background:#F6F7F6}
