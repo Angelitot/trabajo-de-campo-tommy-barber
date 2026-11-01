@@ -90,8 +90,10 @@ async def recorrido(b, nombre, vp, mobile):
     # Alguien sin turno
     await pg.keyboard.press('a')
     check(await pg.locator('#at-l-serv').count() == 1, 'A abre el formulario de alguien sin turno')
-    await pg.select_option('#at-l-serv', 'shaver')
+    await pg.select_option('#at-l-serv', 'corte')
     await pg.fill('#at-l-nombre', 'Pedro')
+    elegida = await pg.locator('.at-hora-op[aria-pressed="true"]').count()
+    check(elegida == 1, 'ya viene elegida la primera hora libre')
     await pg.click('[data-accion="at-llegada-agregar"]')
     fila2 = await pg.locator('.at-fila-item').count()
     check(fila2 == fila + 1, 'el que llegó sin turno se suma a la fila')

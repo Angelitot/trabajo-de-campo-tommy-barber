@@ -489,6 +489,26 @@ select.campo{padding:10px 12px}
 .cl-hist li{display:grid;grid-template-columns:150px minmax(0,1fr) auto auto;align-items:center;gap:6px 16px;padding:10px 4px;border-bottom:1px solid #9AA3A3;font-size:15px}
 .cl-hist-fecha{font-variant-numeric:tabular-nums;color:var(--gris)}
 .cl-hist-precio{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cl-num{margin:0 0 4px;font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--gris)}
+.cl-anteriores{margin:2px 0 0;font-size:15px}
+.cl-ficha-botones{display:flex;flex-wrap:wrap;gap:8px}
+.cl-herr,.cl-confirmar,.cl-rep{margin-top:16px;padding:14px 16px 16px;background:#fff;border:2px solid #000;border-radius:4px}
+.cl-herr{max-width:560px}
+.cl-herr-t{margin:0;font-weight:800;font-stretch:75%;font-size:20px}
+.cl-herr .campo-label{display:block;margin:12px 0 6px;font-weight:700;font-size:15px}
+.cl-herr-nota{margin:8px 0 0;font-size:14px}
+.cl-unir-res{margin-top:10px}
+.cl-unir-res .vacio{margin-top:10px;padding:12px}
+.cl-reps{margin:0 0 28px}
+.cl-reps-intro{max-width:72ch;margin:0;font-size:15px}
+.cl-rep{border-color:var(--rojo)}
+.cl-rep-t{margin:0;font-weight:700}
+.cl-rep-par{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.cl-rep-ficha{padding:8px 10px;border:2px solid #000;border-radius:4px;background:var(--chapa);color:#000;font:inherit;font-size:15px;text-align:left;cursor:pointer}
+.cl-rep-ficha:hover{background:#DCE0DF}
+.cl-rep-ficha.actual{border-style:dashed;cursor:default}
+.cl-confirmar p{margin:0;font-size:15px}
+.cl-rep .cl-confirmar{margin-top:12px;padding:0;border:0}
 
 /* Reportes */
 .rep-seccion{margin-top:40px}
@@ -505,6 +525,11 @@ select.campo{padding:10px 12px}
 .rep-mapa .n2{background:#E57A87}
 .rep-mapa .n3{background:var(--rojo);color:#fff}
 .rep-mapa .n4{background:#7A0A1C;color:#fff}
+.rep-leyenda{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:12px;font-size:14px;font-weight:600}
+.rep-ley{display:inline-block;width:28px;height:18px;border-radius:3px}
+.rep-ley.n0{background:#DCE0DF}.rep-ley.n1{background:#F2B8BF}.rep-ley.n2{background:#E57A87}.rep-ley.n3{background:var(--rojo)}.rep-ley.n4{background:#7A0A1C}
+.rep-ley-sep{width:14px}
+.rep-como{max-width:72ch;margin:10px 0 0;font-size:15px}
 .rep-meses{display:flex;flex-direction:column;gap:2px;max-width:860px;border-top:3px solid #000}
 .rep-mes{display:grid;grid-template-columns:150px minmax(0,1fr) 140px;align-items:center;column-gap:16px;padding:10px 4px;border-bottom:1px solid #9AA3A3}
 .rep-mes p{margin:0}
@@ -572,6 +597,19 @@ kbd{display:inline-flex;align-items:center;justify-content:center;min-width:24px
 .at-llegada-t{margin:0;font-weight:800;font-stretch:75%;font-size:20px}
 .at-llegada label{display:block;margin:12px 0 6px;font-weight:700;font-size:15px}
 .at-llegada-botones{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:14px}
+.at-llegada .campo-label{display:block;margin:12px 0 6px;font-weight:700;font-size:15px}
+.at-l-nota{margin:6px 0 0;font-size:14px}
+.at-llegada .hz-alerta{margin-top:14px}
+.at-horas{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+.at-hora-op{min-height:46px;padding:6px 4px;border:2px solid #000;border-radius:4px;background:#fff;color:#000;font:inherit;font-weight:700;font-size:16px;font-variant-numeric:tabular-nums;line-height:1.15;cursor:pointer}
+.at-hora-op span{display:block;font-size:12px;font-weight:600;color:var(--gris)}
+.at-hora-op:hover{background:#F6F7F6}
+.at-hora-op[aria-pressed="true"]{background:#000;color:#fff}
+.at-hora-op[aria-pressed="true"] span{color:#C5CBCB}
+.campo-error{margin:10px 0 0;color:var(--rojo);font-size:15px;font-weight:700}
+.at-llamar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:12px;padding:10px 12px;border:2px solid #000;border-radius:4px;background:#fff}
+.at-llamar-t{flex:1 1 200px;margin:0;font-size:15px;font-weight:700}
+.at-card .at-llamar{margin-top:16px}
 .at-atajos{margin:32px 0 0;font-size:14px;line-height:2;color:var(--gris)}
 .at-vacia .at-nombre{font-size:clamp(30px,3.4vw,44px)}
 @media (hover:none){
