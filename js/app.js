@@ -280,6 +280,17 @@
   function msjEsperando(t) {
     return 'Hola ' + primerNombre(t.cliente) + ', te escribimos de ' + NEGOCIO + ': te estamos esperando para tu turno de las ' + hhmm(t.min) + '. ¿Venís?';
   }
+  // Al cliente sin turno que dejó su número y se fue: ya casi le toca
+  function msjLlamar(t) {
+    var min = minutosParaLlamar(t);
+    var hola = nombreNorm(t.cliente) ? 'Hola ' + primerNombre(t.cliente) : 'Hola';
+    return hola + ', te escribimos de ' + NEGOCIO + ': ' + (min > 0
+      ? 'ya casi es tu turno. Estamos con el cliente de antes y en unos ' + min + ' minutos te toca.'
+      : 'ya es tu turno.') + ' Te esperamos en ' + DIRECCION + '.';
+  }
+  function msjDe(t, tipo) {
+    return tipo === 'avisar' ? msjCancelacion(t) : tipo === 'esperando' ? msjEsperando(t) : tipo === 'llamar' ? msjLlamar(t) : msjRecordatorio(t);
+  }
   function msjCancelacion(t) {
     return 'Hola ' + primerNombre(t.cliente) + ', te escribimos de ' + NEGOCIO + ': tuvimos que cancelar tu turno ' +
       cuandoTurno(t.fecha, t.min, true) + '. ¿Te queda bien otro horario?';
@@ -304,6 +315,9 @@
       recordadoEn: +r.recordadoEn || 0, avisadoEn: +r.avisadoEn || 0, creadoEn: +r.creadoEn || 0,
       // orden: lugar en la fila de Atender cuando el dueño lo pospone; sinTurno: llegó al local sin reservar
       orden: +r.orden || 0, sinTurno: !!r.sinTurno,
+      // Sin turno: a qué hora llegó (su turno es la primera hora libre que se le dio) y cuándo se le avisó que ya le toca.
+      // enLocal: turno que el dueño anotó en el local (por ejemplo, para el día siguiente si hoy no había lugar)
+      llego: r.llego != null && !isNaN(+r.llego) ? +r.llego : null, llamadoEn: +r.llamadoEn || 0, enLocal: !!r.enLocal,
       // Si el cliente lo cambió de día u hora: el horario anterior y cuándo lo cambió
       antes: r.antes && r.antes.fecha ? { fecha: String(r.antes.fecha), min: +r.antes.min } : null, cambiadoEn: +r.cambiadoEn || 0,
       ejemplo: !!r.ejemplo
@@ -399,7 +413,13 @@
   var APELLIDOS_EJ = ['González', 'Benítez', 'Martínez', 'López', 'Giménez', 'Vera', 'Duarte', 'Ramírez', 'Báez', 'Rojas', 'Acosta', 'Ortiz',
     'Fernández', 'Cabrera', 'Villalba', 'Aquino', 'Ayala', 'Cáceres', 'Romero', 'Sosa', 'Núñez', 'Franco', 'Insfrán', 'Espínola', 'Ojeda',
     'Galeano', 'Paredes', 'Ruiz Díaz', 'Torres', 'Zárate'];
+  // Dos casos de ejemplo para la lista de clientes:
+  // - Rodrigo Villalba (cliente fijo) cambió de número hace tres semanas y reservó con el nuevo.
+  // - Thiago Duarte, hijo de Óscar Duarte, reserva con el número del papá.
+  var NI_CAMBIO_EJ = 5, TEL_NUEVO_EJ = '0994 000 512', CORTE_TEL_EJ = sumarDias(ahoraPY().clave, -21);
+  var NI_HIJO_EJ = 64, NI_PAPA_EJ = 7;
   function nombreEjemplo(ni) {
+    if (ni === NI_HIJO_EJ) return 'Thiago Duarte';
     if (ni < NOMBRES.length) return NOMBRES[ni];
     var j = ni - NOMBRES.length;
     return PILA_EJ[j % PILA_EJ.length] + ' ' + APELLIDOS_EJ[(Math.floor(j / PILA_EJ.length) * 7 + j) % APELLIDOS_EJ.length];
@@ -417,11 +437,15 @@
     'combo-3', 'ritual-barba', 'limpieza', 'combo-6', 'afeitado', 'combo-2', 'combo-5'];
   var MEDIOS_EJ = ['Efectivo', 'Efectivo', 'Transferencia', 'Efectivo', 'Billetera', 'Efectivo', 'Transferencia'];
 
-  function telEjemplo(i) { return PREFIJOS_EJ[i % PREFIJOS_EJ.length] + ' 000 ' + (100 + (i * 37) % 900); }
+  function telEjemplo(i, clave) {
+    if (i === NI_HIJO_EJ) i = NI_PAPA_EJ;
+    if (i === NI_CAMBIO_EJ && clave && clave >= CORTE_TEL_EJ) return TEL_NUEVO_EJ;
+    return PREFIJOS_EJ[i % PREFIJOS_EJ.length] + ' 000 ' + (100 + (i * 37) % 900);
+  }
   function turnoEjemplo(clave, min, ni, servicio) {
     return normalizarTurno({
       id: 'E' + clave.replace(/-/g, '') + '-' + min, codigo: 'TB-' + (1000 + hashTxt(clave + '|' + min) % 9000),
-      servicio: servicio, fecha: clave, min: min, cliente: nombreEjemplo(ni), tel: telEjemplo(ni),
+      servicio: servicio, fecha: clave, min: min, cliente: nombreEjemplo(ni), tel: telEjemplo(ni, clave),
       creadoEn: msDe(sumarDias(clave, -2), 600 + ni * 7), ejemplo: true
     });
   }
@@ -1112,6 +1136,10 @@
     hz: null,                 // Horario: formulario de un cambio nuevo
     avisoHorario: '',
     cliente: null,            // Clientes: ficha abierta
+    clTel: null,              // Clientes: { valor, error } al cambiar el número
+    clUnir: null,             // Clientes: { buscar } al elegir con qué ficha se junta
+    clConfirmar: null,        // Clientes: { a, b } par de fichas a punto de unirse
+    avisoCliente: '',
     clBuscar: '',
     clOrden: 'frecuentes',
     repPeriodo: '3m'          // Reportes: período
@@ -1126,7 +1154,7 @@
   function botonWa(t, tipo, texto, clase) {
     var base = ' class="btn ' + clase + ' btn-mini" data-accion="' + tipo + '" data-id="' + esc(t.id) + '" data-foco="' + tipo + '-' + esc(t.id) + '"';
     if (t.ejemplo) return '<button type="button"' + base + '>' + ICONOS.chat + texto + '</button>';
-    var texto2 = tipo === 'avisar' ? msjCancelacion(t) : tipo === 'esperando' ? msjEsperando(t) : msjRecordatorio(t);
+    var texto2 = msjDe(t, tipo);
     return '<a ' + atributosWa(telInfo(t.tel).wa, texto2) + base + '>' + ICONOS.chat + texto + '<span class="solo-lector"> (abre WhatsApp)</span></a>';
   }
 
@@ -1851,11 +1879,97 @@
 
   // Cuándo le toca, dicho como lo diría el dueño
   function cuandoAtender(t, h) {
-    if (t.sinTurno) return 'Llegó sin turno a las ' + hhmm(t.min);
+    if (t.sinTurno) {
+      if (t.llego == null || t.llego === t.min) return 'Llegó sin turno a las ' + hhmm(t.min);
+      return 'Llegó sin turno a las ' + hhmm(t.llego) + ' · ' + (h.min < t.min ? 'le toca a las ' : 'su hora: ') + hhmm(t.min);
+    }
     var dif = h.min - t.min;
     if (dif >= 0 && dif < 5) return 'Le toca ahora, a las ' + hhmm(t.min);
     if (dif >= 5) return 'Le tocaba a las ' + hhmm(t.min) + ', hace ' + durTxt(dif);
     return 'Llega a las ' + hhmm(t.min) + ', en ' + durTxt(-dif);
+  }
+
+  /* Cliente sin turno: se le da la primera hora libre que queda hoy (o se elige otra libre).
+     Si hoy ya no hay lugar, se le ofrecen las horas libres del próximo día. */
+  function llegadaVacia() { return { servicio: 'corte', nombre: '', tel: '', hora: null, error: '' }; }
+  function horasLibresDia(clave, dur, desde) {
+    // Los turnos ya cobrados o que no vinieron dejan su hora libre
+    var ocup = ocupacionDe(todosLosTurnos().filter(function (t) { return t.estado === 'confirmado'; }), clave);
+    var l = [];
+    horasDe(clave).forEach(function (tr) {
+      for (var m = tr[0]; m + dur <= tr[1]; m += PASO) if (m >= desde && horarioLibre(clave, m, dur, ocup)) l.push(m);
+    });
+    return l;
+  }
+  var MARGEN_AHORA = 10;  // un turno que empezó hace 10 minutos o menos todavía se puede dar "ahora"
+  function opcionesLlegada(h) {
+    var s = SERV[P.llegada.servicio] || SERVICIOS[0];
+    var inicio = h.min - h.min % PASO;
+    if (h.min - inicio > MARGEN_AHORA) inicio += PASO;
+    var op = { serv: s, hoy: true, dia: h.clave, horas: horasLibresDia(h.clave, s.min, inicio) };
+    for (var k = 1; !op.horas.length && k <= 14; k++) {
+      var c = sumarDias(h.clave, k);
+      var l = horasLibresDia(c, s.min, 0);
+      if (l.length) op = { serv: s, hoy: false, dia: c, horas: l };
+    }
+    op.sel = op.horas.indexOf(P.llegada.hora) >= 0 ? P.llegada.hora : (op.horas[0] != null ? op.horas[0] : null);
+    return op;
+  }
+  // Cómo se lee cada hora libre: "ahora", "al terminar con Juan" o solo la hora
+  function etiquetaHoraLlegada(m, h, op) {
+    if (!op.hoy) return '';
+    if (m <= h.min) return 'ahora';
+    var termina = colaHoy(h).filter(function (t) { return t.min <= h.min && Math.ceil((t.min + t.dur) / PASO) * PASO === m; })[0];
+    return termina ? 'al terminar con ' + primerNombre(termina.cliente) : '';
+  }
+  // Minutos que faltan para atender a un cliente sin turno que dejó su número (null: todavía no hay que avisarle)
+  function minutosParaLlamar(t) {
+    if (!t.sinTurno || !telInfo(t.tel).ok || t.estado !== 'confirmado') return null;
+    var h = ahoraPY();
+    var cola = colaHoy(h);
+    var i = cola.indexOf(t);
+    if (i < 0) i = cola.findIndex(function (x) { return x.id === t.id; });
+    if (i === 0) return 0;
+    if (i !== 1) return null;
+    var ant = cola[0];
+    if (h.min < ant.min && !ant.sinTurno) return null;  // el de antes todavía no llegó a su hora
+    var resta = h.min >= ant.min ? Math.max(5, ant.min + ant.dur - h.min) : ant.min - h.min + ant.dur;
+    resta = Math.max(resta, t.min - h.min);
+    return Math.ceil(resta / 5) * 5;
+  }
+  function avisoLlamar(t) {
+    var min = minutosParaLlamar(t);
+    if (min == null) return '';
+    var quien = nombreNorm(t.cliente) ? esc(primerNombre(t.cliente)) : 'El cliente sin turno';
+    return '<div class="at-llamar" role="group" aria-label="Avisarle que ya le toca">' +
+      '<p class="at-llamar-t">' + (t.llamadoEn ? 'Le avisaste ' + esc(cuandoFue(t.llamadoEn)) + '.' : quien + ' dejó su número. ' + (min > 0 ? 'Le falta 1 cliente: avisale que vuelva.' : 'Ya le toca: avisale.')) + '</p>' +
+      botonWa(t, 'llamar', t.llamadoEn ? 'Avisar de nuevo' : 'Avisarle por WhatsApp', t.llamadoEn ? 'btn-linea' : 'btn-wa') + '</div>';
+  }
+  function plantillaLlegada(h) {
+    var op = opcionesLlegada(h);
+    var L = P.llegada;
+    var horas;
+    if (!op.horas.length) {
+      horas = '<p class="hz-alerta" role="status">No queda lugar para ' + esc(nombreServicio(op.serv)) + ' ni hoy ni en los próximos 14 días.</p>';
+    } else {
+      horas = (op.hoy ? '' : '<p class="hz-alerta" role="status">Hoy ya no queda lugar para ' + esc(nombreServicio(op.serv)) + ' (' + durTxt(op.serv.min) + '). Estas son las horas libres del ' + esc(diaLargo(op.dia)) + ':</p>') +
+        '<p class="campo-label" id="at-l-hora-t">' + (op.hoy ? 'Hora (ya está elegida la primera libre)' : 'Hora') + '</p>' +
+        '<div class="at-horas" role="group" aria-labelledby="at-l-hora-t">' + op.horas.slice(0, 16).map(function (m) {
+          var et = etiquetaHoraLlegada(m, h, op);
+          return '<button type="button" class="at-hora-op" data-accion="at-l-hora" data-m="' + m + '" data-foco="at-l-hora-' + m + '" aria-pressed="' + (m === op.sel) + '">' + hhmm(m) + (et ? '<span>' + esc(et) + '</span>' : '') + '</button>';
+        }).join('') + '</div>';
+    }
+    var boton = op.hoy ? 'Sumar a la fila a las ' + hhmm(op.sel) : op.sel != null ? 'Darle turno el ' + diaLargo(op.dia) + ' a las ' + hhmm(op.sel) : 'Sumar a la fila';
+    return '<div class="at-llegada" role="group" aria-labelledby="at-llegada-t"><p class="at-llegada-t" id="at-llegada-t">Llegó alguien sin turno</p>' +
+      '<label class="campo-label" for="at-l-serv">Servicio</label><select class="campo" id="at-l-serv" data-campo="llegada.servicio">' +
+        SERVICIOS.map(function (x) { return '<option value="' + x.id + '"' + (L.servicio === x.id ? ' selected' : '') + '>' + esc(nombreServicio(x)) + ', ' + gs(x.precio) + '</option>'; }).join('') + '</select>' +
+      '<label class="campo-label" for="at-l-nombre">Nombre y apellido (si quiere)</label><input class="campo" id="at-l-nombre" type="text" autocomplete="off" maxlength="40" data-campo="llegada.nombre" value="' + esc(L.nombre) + '">' +
+      '<label class="campo-label" for="at-l-tel">WhatsApp (si se va y vuelve)</label><input class="campo" id="at-l-tel" type="tel" inputmode="tel" autocomplete="off" maxlength="20" placeholder="0981 123 456" data-campo="llegada.tel" value="' + esc(L.tel) + '" aria-describedby="at-l-tel-nota">' +
+      '<p class="suave at-l-nota" id="at-l-tel-nota">Cuando le falte un cliente, te aparece el botón para avisarle.</p>' +
+      horas +
+      (L.error ? '<p class="campo-error" role="alert">' + esc(L.error) + '</p>' : '') +
+      '<div class="at-llegada-botones"><button type="button" class="btn btn-negro btn-mini" data-accion="at-llegada-agregar" data-foco="at-llegada-agregar"' + (op.sel == null ? ' disabled' : '') + '>' + esc(boton) + '</button>' +
+      '<button type="button" class="link-btn" data-accion="at-llegada-cancelar">Cancelar</button></div></div>';
   }
 
   function plantillaAtender(h) {
@@ -1904,7 +2018,7 @@
       }).join('');
       var otras = '<button type="button" class="btn btn-linea btn-mini" data-accion="at-novino" data-id="' + esc(t.id) + '" data-foco="at-novino"' + (llego ? '' : ' disabled title="Se puede marcar cuando llegue la hora del turno"') + '>No vino ' + kbd('N') + '</button>' +
         '<button type="button" class="btn btn-linea btn-mini" data-accion="at-posponer" data-id="' + esc(t.id) + '" data-foco="at-posponer"' + (sig ? '' : ' disabled title="No hay nadie después en la fila"') + '>' + (sig ? 'Pasar después de ' + esc(primerNombre(sig.cliente)) : 'Posponer') + ' ' + kbd('P') + '</button>' +
-        (tel.ok && llego ? botonWa(t, 'esperando', '¿Venís?', 'btn-linea') : '');
+        (tel.ok && llego && !t.sinTurno ? botonWa(t, 'esperando', '¿Venís?', 'btn-linea') : '');
       principal = '<section class="at-card' + (idx === 0 ? ' at-actual' : '') + '" id="at-card" tabindex="-1" data-foco="at-card" aria-labelledby="at-nombre">' +
         '<div class="at-top"><p class="at-etiqueta">' + etiqueta + '</p><p class="at-cuando">' + cuandoAtender(t, h) + '</p>' + marcas.join('') + '</div>' +
         '<div class="at-cuerpo"><p class="at-hora">' + hhmm(t.min) + '</p><div class="at-datos">' +
@@ -1913,7 +2027,7 @@
           (extra.length ? '<p class="at-extra">' + extra.join(' · ') + '</p>' : '') +
         '</div></div>' +
         '<div class="at-cobro" role="group" aria-label="Cobrar ' + gs(t.precio) + '"><p class="at-cobro-txt">Cobrar <strong>' + gs(t.precio) + '</strong></p><div class="at-medios">' + medios + '</div></div>' +
-        '<div class="at-otras">' + otras + '</div>' +
+        '<div class="at-otras">' + otras + '</div>' + avisoLlamar(t) +
       '</section>';
     }
 
@@ -1926,7 +2040,7 @@
 
     var despues = '<section class="at-lado-caja" aria-labelledby="at-despues-t"><h2 class="pa-h3" id="at-despues-t">Después</h2>' +
       (sig
-        ? '<button type="button" class="at-sig-card" data-accion="at-sig" data-foco="at-sig-card"><span class="at-sig-hora">' + hhmm(sig.min) + '</span><span><span class="at-sig-nombre">' + esc(sig.cliente) + '</span><span class="at-sig-serv">' + esc(nombreServicio(SERV[sig.servicio])) + '</span><span class="at-sig-cuando">' + cuandoAtender(sig, h) + '</span></span></button>'
+        ? '<button type="button" class="at-sig-card" data-accion="at-sig" data-foco="at-sig-card"><span class="at-sig-hora">' + hhmm(sig.min) + '</span><span><span class="at-sig-nombre">' + esc(sig.cliente) + '</span><span class="at-sig-serv">' + esc(nombreServicio(SERV[sig.servicio])) + '</span><span class="at-sig-cuando">' + cuandoAtender(sig, h) + '</span></span></button>' + avisoLlamar(sig)
         : '<p class="vacio">Nadie más por ahora.</p>') +
       '</section>';
 
@@ -1939,12 +2053,7 @@
 
     var llegada;
     if (P.llegada) {
-      llegada = '<div class="at-llegada" role="group" aria-labelledby="at-llegada-t"><p class="at-llegada-t" id="at-llegada-t">Llegó alguien sin turno</p>' +
-        '<label class="campo-label" for="at-l-serv">Servicio</label><select class="campo" id="at-l-serv" data-campo="llegada.servicio">' +
-          SERVICIOS.map(function (x) { return '<option value="' + x.id + '"' + (P.llegada.servicio === x.id ? ' selected' : '') + '>' + esc(nombreServicio(x)) + ', ' + gs(x.precio) + '</option>'; }).join('') + '</select>' +
-        '<label class="campo-label" for="at-l-nombre">Nombre (si querés)</label><input class="campo" id="at-l-nombre" type="text" autocomplete="off" maxlength="40" data-campo="llegada.nombre" value="' + esc(P.llegada.nombre) + '">' +
-        '<div class="at-llegada-botones"><button type="button" class="btn btn-negro btn-mini" data-accion="at-llegada-agregar" data-foco="at-llegada-agregar">Sumar a la fila</button>' +
-        '<button type="button" class="link-btn" data-accion="at-llegada-cancelar">Cancelar</button></div></div>';
+      llegada = plantillaLlegada(h);
     } else {
       llegada = '<button type="button" class="btn btn-linea btn-mini at-llegada-btn" data-accion="at-llegada-abrir" data-foco="at-llegada-abrir">+ Llegó alguien sin turno ' + kbd('A') + '</button>';
     }
@@ -2002,14 +2111,25 @@
   }
   function atAgregarLlegada() {
     var h = ahoraPY();
-    var s = SERV[P.llegada.servicio] || SERVICIOS[0];
-    var nombre = P.llegada.nombre.trim() || 'Cliente sin turno';
+    var L = P.llegada;
+    var tel = telInfo(L.tel);
+    if (!tel.vacio && !tel.ok) { L.error = 'Ese número no parece un celular de Paraguay. Revisalo o dejalo vacío.'; return 'at-l-tel'; }
+    var op = opcionesLlegada(h);
+    if (L.hora != null && op.sel !== L.hora) { L.error = 'Las ' + hhmm(L.hora) + ' ya no está libre. Elegí otra hora.'; L.hora = null; return 'at-l-hora-t'; }
+    if (op.sel == null) return 'at-l-serv';
+    var s = op.serv;
+    var nombre = L.nombre.trim() || 'Cliente sin turno';
     var codigo = nuevoCodigo();
-    var t = normalizarTurno({ id: codigo, codigo: codigo, servicio: s.id, fecha: h.clave, min: h.min, precio: s.precio, dur: s.min, cliente: nombre, creadoEn: Date.now(), sinTurno: true });
+    var t = normalizarTurno({ id: codigo, codigo: codigo, servicio: s.id, fecha: op.dia, min: op.sel, precio: s.precio, dur: s.min, cliente: nombre,
+      tel: tel.ok ? tel.lindo : '', creadoEn: Date.now(), sinTurno: op.hoy, llego: op.hoy ? h.min : null, enLocal: true });
     D.turnos.push(t);
     guardarDatos();
     P.llegada = null;
-    P.deshacer = { tipo: 'llegada', id: t.id, texto: nombre + ' se sumó a la fila (' + nombreServicio(s) + ').' };
+    P.deshacer = { tipo: 'llegada', id: t.id, texto: op.hoy
+      ? nombre + ' quedó en la fila para las ' + hhmm(t.min) + ' (' + nombreServicio(s) + ').'
+      : nombre + ' tiene turno el ' + diaLargo(op.dia) + ' a las ' + hhmm(t.min) + ' (' + nombreServicio(s) + ').' };
+    renderReserva();
+    return null;
   }
   function atDeshacer() {
     var d = P.deshacer;
@@ -2150,32 +2270,129 @@
   }
   function actualizarSitioHorario() { renderHorarios(); renderEstadoHero(); renderReserva(); }
 
-  /* ----- Clientes: se reconocen por su WhatsApp ----- */
-  function claveCliente(t) {
-    var tel = telInfo(t.tel);
-    if (tel.ok) return 't' + tel.wa;
-    var n = String(t.cliente || '').trim().toLowerCase();
-    if (!n || n === 'cliente sin turno' || n === 'cliente') return null;
-    return 'n' + n;
+  /* ----- Clientes: cada uno tiene un número interno ----- */
+  // Como en la base de datos: el N.º de cliente es la clave (PK) y nunca cambia.
+  // Un turno es de un cliente cuando coinciden su WhatsApp y su nombre y apellido (sin importar
+  // mayúsculas ni acentos). Así un papá y su hijo que reservan con el mismo número quedan separados,
+  // y si alguien cambia de número se le cambia en la ficha sin perder su historial.
+  // { v, sig: próximo N.º, ids: { 'número|nombre': N.º }, fichas: { N.º: { tel, anteriores: [{ wa, hasta }], unidos: [N.º] } },
+  //   distintos: ['3-15'] (pares que el dueño confirmó que son personas distintas) }
+  var CLAVE_CLIENTES = 'tommybarber-clientes';
+  function registroVacio() { return { v: 1, sig: 1, ids: {}, fichas: {}, distintos: [] }; }
+  function cargarRegistro() {
+    var r = leerJSON(CLAVE_CLIENTES, null);
+    return r && r.v === 1 && r.sig > 0 && r.ids && r.fichas && Array.isArray(r.distintos) ? r : registroVacio();
   }
+  var CLI = cargarRegistro();
+  var cliCambio = false;
+  function guardarRegistro() { guardarJSON(CLAVE_CLIENTES, CLI); cliCambio = false; }
+  function nombreNorm(n) {
+    var s = sinAcentos(String(n || '').trim().replace(/\s+/g, ' '));
+    return s === 'cliente sin turno' || s === 'cliente' ? '' : s;
+  }
+  function claveBase(nombre, tel) {
+    var t = telInfo(tel), n = nombreNorm(nombre);
+    if (t.ok) return 't' + t.wa + '|' + n;
+    return n ? 'n' + n : null;
+  }
+  function fichaDe(id) { return CLI.fichas[id] || (CLI.fichas[id] = { tel: '', anteriores: [], unidos: [] }); }
+  // Clientes que usan (o usaron) ese número
+  function idsConTel(wa) {
+    var ids = {};
+    Object.keys(CLI.ids).forEach(function (k) { if (k.indexOf('t' + wa + '|') === 0) ids[CLI.ids[k]] = true; });
+    Object.keys(CLI.fichas).forEach(function (id) {
+      if (CLI.fichas[id].anteriores.some(function (a) { return a.wa === wa; })) ids[id] = true;
+    });
+    return Object.keys(ids).map(Number);
+  }
+  // N.º de cliente de un turno (lo crea si es la primera vez que viene)
+  function clienteIdDe(t) {
+    var b = claveBase(t.cliente, t.tel);
+    if (!b) return null;
+    if (CLI.ids[b]) return CLI.ids[b];
+    var tel = telInfo(t.tel);
+    if (tel.ok && !nombreNorm(t.cliente)) {
+      // Dejó solo el número: si es de un único cliente, es él
+      var mismos = idsConTel(tel.wa);
+      if (mismos.length === 1) { CLI.ids[b] = mismos[0]; cliCambio = true; return mismos[0]; }
+    }
+    CLI.ids[b] = CLI.sig++;
+    cliCambio = true;
+    return CLI.ids[b];
+  }
+  function claveCliente(t) { var id = clienteIdDe(t); return id ? String(id) : null; }
+  function parDistinto(a, b) { return Math.min(+a, +b) + '-' + Math.max(+a, +b); }
+
+  // Junta dos fichas en una. Queda el N.º más antiguo y el último número que usó; el otro pasa a "números anteriores".
+  function unirClientes(a, b) {
+    var queda = Math.min(+a, +b), sale = Math.max(+a, +b);
+    if (queda === sale) return null;
+    var ca = IDX[String(queda)], cb = IDX[String(sale)];
+    var fq = fichaDe(queda), fs = CLI.fichas[sale] || { tel: '', anteriores: [], unidos: [] };
+    Object.keys(CLI.ids).forEach(function (k) { if (CLI.ids[k] === sale) CLI.ids[k] = queda; });
+    // El número que queda: el último que cargó el dueño con «Cambiar número» o, si no, el del turno más reciente
+    var turnos = (ca ? ca.turnos : []).concat(cb ? cb.turnos : []).filter(function (t) { return telInfo(t.tel).ok; }).sort(porFechaHora);
+    var nums = [fq.tel, fs.tel].concat(turnos.map(function (t) { return telInfo(t.tel).wa; })).filter(Boolean);
+    var cargado = [fq, fs].filter(function (f) { return f.tel && f.cambioTel; }).sort(function (x, y) { return y.cambioTel - x.cambioTel; })[0];
+    var actual = cargado ? cargado.tel : turnos.length ? telInfo(turnos[turnos.length - 1].tel).wa : (fq.tel || fs.tel);
+    if (cargado) fq.cambioTel = cargado.cambioTel;
+    var anteriores = fq.anteriores.concat(fs.anteriores);
+    nums.forEach(function (wa) { if (wa !== actual && !anteriores.some(function (x) { return x.wa === wa; })) anteriores.push({ wa: wa, hasta: Date.now() }); });
+    fq.tel = actual || '';
+    fq.anteriores = anteriores.filter(function (x, i) { return x.wa !== actual && anteriores.findIndex(function (y) { return y.wa === x.wa; }) === i; });
+    fq.unidos = fq.unidos.concat([sale], fs.unidos || []);
+    delete CLI.fichas[sale];
+    CLI.distintos = CLI.distintos.filter(function (p) { return p.split('-').indexOf(String(sale)) < 0; });
+    guardarRegistro();
+    return queda;
+  }
+  // El cliente cambió de número: queda guardado el anterior y sus próximos turnos se avisan al nuevo
+  function cambiarNumero(c, nuevo) {
+    var t = telInfo(nuevo);
+    var f = fichaDe(+c.id);
+    var viejo = telInfo(c.tel);
+    if (viejo.ok && viejo.wa !== t.wa && !f.anteriores.some(function (x) { return x.wa === viejo.wa; })) f.anteriores.push({ wa: viejo.wa, hasta: Date.now() });
+    f.anteriores = f.anteriores.filter(function (x) { return x.wa !== t.wa; });
+    f.tel = t.wa;
+    f.cambioTel = Date.now();
+    var h = ahoraPY();
+    todosLosTurnos().forEach(function (x) {
+      if (x.estado === 'confirmado' && !empezo(x, h) && claveCliente(x) === String(c.id)) { x.tel = t.lindo; guardarTurno(x); }
+    });
+    // Desde ahora, ese número con ese nombre es este cliente. Si ya había otra ficha así, se juntan.
+    var b = claveBase(c.nombre, t.lindo);
+    var otro = CLI.ids[b];
+    CLI.ids[b] = +c.id;
+    guardarRegistro();
+    if (otro && otro !== +c.id) return unirClientes(otro, c.id);
+    return +c.id;
+  }
+
   var IDX = {};  // índice de clientes del último dibujo del panel
   function indiceClientes(h) {
     var idx = {};
     historialHasta(h).concat(todosLosTurnos()).forEach(function (t) {
       var k = claveCliente(t);
       if (!k) return;
-      var c = idx[k] || (idx[k] = { id: k, nombre: t.cliente, tel: telInfo(t.tel).lindo || t.tel, ejemplo: true, turnos: [], visitas: 0, faltas: 0, cancela: 0, gastado: 0 });
+      var c = idx[k] || (idx[k] = { id: k, num: +k, nombre: t.cliente, tel: '', ejemplo: true, turnos: [], visitas: 0, faltas: 0, cancela: 0, gastado: 0 });
       c.turnos.push(t);
       if (!t.ejemplo) c.ejemplo = false;
       if (t.estado === 'atendido') { c.visitas++; c.gastado += t.precio; }
       else if (t.estado === 'novino') c.faltas++;
       else if (t.estado === 'cancelado' && t.canceladoPor === 'cliente') c.cancela++;
     });
+    if (cliCambio) guardarRegistro();
     Object.keys(idx).forEach(function (k) {
       var c = idx[k];
       c.turnos.sort(porFechaHora);
       var hechos = c.turnos.filter(function (t) { return t.estado === 'atendido'; });
-      c.nombre = c.turnos[c.turnos.length - 1].cliente;
+      var f = CLI.fichas[k];
+      var conTel = c.turnos.filter(function (t) { return telInfo(t.tel).ok; });
+      c.tel = f && f.tel ? telInfo(f.tel).lindo : conTel.length ? telInfo(conTel[conTel.length - 1].tel).lindo : '';
+      c.cambioTel = f && f.cambioTel ? f.cambioTel : 0;
+      c.anteriores = f ? f.anteriores.map(function (x) { return telInfo(x.wa).lindo; }) : [];
+      var conNombre = c.turnos.filter(function (t) { return nombreNorm(t.cliente); });
+      c.nombre = conNombre.length ? conNombre[conNombre.length - 1].cliente : 'Cliente sin turno';
       c.primero = c.turnos[0].fecha;
       c.ultimo = hechos[hechos.length - 1] || null;
       c.proximo = c.turnos.find(function (t) { return t.estado === 'confirmado' && !empezo(t, h); }) || null;
@@ -2186,6 +2403,32 @@
     });
     return idx;
   }
+  // Fichas que pueden ser de la misma persona: mismo nombre y apellido con otro número
+  // (¿cambió de número?) o mismo número con otro nombre (¿un familiar, o lo escribió distinto?)
+  function posiblesRepetidos(idx) {
+    var porNombre = {}, porTel = {}, pares = {}, lista = [];
+    Object.keys(idx).forEach(function (k) {
+      var c = idx[k], n = nombreNorm(c.nombre), t = telInfo(c.tel);
+      if (n) (porNombre[n] = porNombre[n] || []).push(c);
+      if (t.ok) (porTel[t.wa] = porTel[t.wa] || []).push(c);
+    });
+    function agregar(grupos, motivo) {
+      Object.keys(grupos).forEach(function (g) {
+        var l = grupos[g].sort(function (a, b) { return a.num - b.num; });
+        for (var i = 0; i < l.length; i++) for (var j = i + 1; j < l.length; j++) {
+          var par = parDistinto(l[i].id, l[j].id);
+          if (pares[par] || CLI.distintos.indexOf(par) >= 0) continue;
+          pares[par] = true;
+          lista.push({ par: par, a: l[i], b: l[j], motivo: motivo });
+        }
+      });
+    }
+    agregar(porNombre, 'nombre');
+    agregar(porTel, 'tel');
+    return lista;
+  }
+  function repetidosDe(c) { return REP.filter(function (r) { return r.a.id === c.id || r.b.id === c.id; }); }
+  var REP = [];
   function faltasDe(t) { var c = IDX[claveCliente(t)]; return c ? c.faltas : 0; }
   function pillFaltas(t) {
     var n = faltasDe(t);
@@ -2206,7 +2449,13 @@
       : P.clOrden === 'recientes' ? todos.slice().sort(function (a, b) { return (b.ultimo ? b.ultimo.fecha : '') < (a.ultimo ? a.ultimo.fecha : '') ? -1 : 1; })
       : todos.slice().sort(function (a, b) { return b.visitas - a.visitas || b.gastado - a.gastado; });
     var ordenes = [['frecuentes', 'Los que más vienen'], ['recientes', 'Recientes'], ['faltas', 'Con faltas (' + conFaltas.length + ')']];
-    return '<div class="cifras">' +
+    var repetidos = REP.length
+      ? '<section class="cl-reps" aria-labelledby="cl-reps-t"><h2 class="pa-h3" id="cl-reps-t">Posibles clientes repetidos (' + REP.length + ')</h2>' +
+        '<p class="suave cl-reps-intro">Fichas que pueden ser de la misma persona. Si es el mismo cliente, se juntan con todo su historial; si no, marcalos como distintos y no se vuelve a preguntar.</p>' +
+        REP.map(function (r) { return itemRepetido(r, ''); }).join('') + '</section>'
+      : '';
+    return (P.avisoCliente ? '<p class="aviso-ok" role="status">' + esc(P.avisoCliente) + '</p>' : '') + repetidos +
+      '<div class="cifras">' +
         '<div class="cifra"><p class="cifra-label">Clientes en los últimos 6 meses</p><p class="cifra-valor">' + todos.length + '</p></div>' +
         '<div class="cifra"><p class="cifra-label">Vinieron 4 veces o más</p><p class="cifra-valor">' + frecuentes + '</p></div>' +
         '<div class="cifra"><p class="cifra-label">Faltaron alguna vez</p><p class="cifra-valor">' + conFaltas.length + '</p></div>' +
@@ -2217,15 +2466,38 @@
         }).join('') + '</div></div>' +
       '<p class="vacio" id="cl-sin" hidden>No hay clientes con ese nombre o número.</p>' +
       '<ul class="cl-lista">' + lista.map(function (c, i) {
-        var busca = sinAcentos(c.nombre) + ' ' + String(c.tel).replace(/\D/g, '');
+        var busca = sinAcentos(c.nombre) + ' ' + [c.tel].concat(c.anteriores).map(function (x) { return String(x).replace(/\D/g, ''); }).join(' ');
         return '<li data-busca="' + esc(busca) + '"' + (i >= MAX_CLIENTES ? ' hidden' : '') + '><button type="button" class="cl-item" data-accion="cl-ver" data-id="' + esc(c.id) + '" data-foco="cl-' + esc(c.id) + '">' +
           '<span class="cl-nombre">' + esc(c.nombre) + (c.faltas ? ' <span class="pill pill-falta">Faltó ' + (c.faltas === 1 ? '1 vez' : c.faltas + ' veces') + '</span>' : '') + '</span>' +
-          '<span class="cl-dato">' + (c.tel ? 'WhatsApp ' + esc(c.tel) + ' · ' : '') + plural(c.visitas, 'visita', 'visitas') + (c.ultimo ? ' · último corte ' + haceDias(c.ultimo.fecha, h) : '') + '</span>' +
+          '<span class="cl-dato">N.º ' + c.num + ' · ' + (c.tel ? 'WhatsApp ' + esc(c.tel) + ' · ' : '') + plural(c.visitas, 'visita', 'visitas') + (c.ultimo ? ' · último corte ' + haceDias(c.ultimo.fecha, h) : '') + '</span>' +
           '<span class="cl-gasto">' + gs(c.gastado) + '</span></button></li>';
       }).join('') + '</ul>' +
       (lista.length > MAX_CLIENTES ? '<p class="suave" id="cl-mas">Se muestran ' + MAX_CLIENTES + ' de ' + lista.length + '. Buscá por nombre o número para encontrar al resto.</p>' : '');
   }
   var MAX_CLIENTES = 60;
+  function limpiarCliente() { P.clTel = null; P.clUnir = null; P.clConfirmar = null; P.avisoCliente = ''; }
+  function guardarNumeroCliente() {
+    var c = IDX[P.cliente];
+    if (!c || !P.clTel) return false;
+    var t = telInfo(P.clTel.valor);
+    if (!t.ok) { P.clTel.error = 'Escribí un celular de Paraguay, por ejemplo 0981 123 456.'; return false; }
+    if (t.lindo === c.tel) { P.clTel.error = 'Ese ya es su número.'; return false; }
+    var queda = cambiarNumero(c, t.lindo);
+    P.cliente = String(queda);
+    P.clTel = null;
+    P.avisoCliente = 'Listo: el WhatsApp de ' + primerNombre(c.nombre) + ' ahora es ' + t.lindo + '.' +
+      (queda !== c.num ? ' Ya había otra ficha suya con ese número y quedaron juntas en la N.º ' + queda + '.' : '');
+    return true;
+  }
+  function unirDesdePanel() {
+    var par = P.clConfirmar;
+    if (!par || !IDX[par.a] || !IDX[par.b]) { P.clConfirmar = null; return; }
+    var na = IDX[par.a].num, nb = IDX[par.b].num;
+    var queda = unirClientes(par.a, par.b);
+    P.clConfirmar = null; P.clUnir = null;
+    if (P.cliente) P.cliente = String(queda);
+    P.avisoCliente = 'Listo: las fichas N.º ' + Math.min(na, nb) + ' y N.º ' + Math.max(na, nb) + ' quedaron en una sola, la N.º ' + queda + '.';
+  }
   function filtrarClientes() {
     var q = sinAcentos(P.clBuscar.trim());
     var qn = P.clBuscar.replace(/\D/g, '');
@@ -2241,6 +2513,57 @@
     var sin = document.getElementById('cl-sin');
     if (sin) sin.hidden = visibles > 0;
   }
+  // Un par de fichas que pueden ser la misma persona, con los botones para decidir.
+  // desde: la ficha abierta (para no repetir su propio nombre como link)
+  function itemRepetido(r, desde) {
+    var pregunta = r.motivo === 'nombre'
+      ? 'Mismo nombre y apellido, otro número. ¿Cambió de número?'
+      : 'Mismo número, otro nombre. ¿Es la misma persona o reserva con el número de un familiar?';
+    var ficha = function (c) {
+      var txt = 'N.º ' + c.num + ' · ' + esc(c.nombre) + (c.tel ? ' · ' + esc(c.tel) : '') + ' · ' + plural(c.visitas, 'visita', 'visitas');
+      return c.id === desde ? '<span class="cl-rep-ficha actual">' + txt + ' (esta ficha)</span>'
+        : '<button type="button" class="cl-rep-ficha" data-accion="cl-ver" data-id="' + esc(c.id) + '" data-foco="cl-rep-' + r.par + '-' + esc(c.id) + '">' + txt + '</button>';
+    };
+    var abierto = P.clConfirmar && parDistinto(P.clConfirmar.a, P.clConfirmar.b) === r.par;
+    return '<div class="cl-rep" role="group" aria-label="' + esc(pregunta) + '"><p class="cl-rep-t">' + esc(pregunta) + '</p>' +
+      '<div class="cl-rep-par">' + ficha(r.a) + ficha(r.b) + '</div>' +
+      (abierto ? confirmacionUnir(r.a.id, r.b.id)
+        : '<div class="at-llegada-botones"><button type="button" class="btn btn-negro btn-mini" data-accion="cl-unir-pedir" data-a="' + esc(r.a.id) + '" data-b="' + esc(r.b.id) + '" data-foco="cl-unir-' + r.par + '">Es el mismo: unir</button>' +
+          '<button type="button" class="btn btn-linea btn-mini" data-accion="cl-distintos" data-par="' + r.par + '" data-foco="cl-distintos-' + r.par + '">Son distintos</button></div>') +
+      '</div>';
+  }
+  // El número que queda al juntar dos fichas (misma regla que unirClientes)
+  function telQueQueda(ca, cb) {
+    var fa = CLI.fichas[ca.id], fb = CLI.fichas[cb.id];
+    var cargado = [fa, fb].filter(function (f) { return f && f.tel && f.cambioTel; }).sort(function (x, y) { return y.cambioTel - x.cambioTel; })[0];
+    if (cargado) return telInfo(cargado.tel).lindo;
+    var turnos = ca.turnos.concat(cb.turnos).filter(function (t) { return telInfo(t.tel).ok; }).sort(porFechaHora);
+    return turnos.length ? telInfo(turnos[turnos.length - 1].tel).lindo : (ca.tel || cb.tel);
+  }
+  function confirmacionUnir(a, b) {
+    var ca = IDX[a], cb = IDX[b];
+    if (!ca || !cb) return '';
+    var queda = ca.num < cb.num ? ca : cb, sale = queda === ca ? cb : ca;
+    var tel = telQueQueda(ca, cb);
+    return '<div class="cl-confirmar" role="group" aria-labelledby="cl-confirmar-t"><p id="cl-confirmar-t"><strong>¿Juntar las dos fichas?</strong> Queda la N.º ' + queda.num + ' con el historial de las dos (' +
+        plural(queda.visitas + sale.visitas, 'visita', 'visitas') + ')' + (tel ? ' y el número ' + esc(tel) + ', el último que usó' : '') + '. La N.º ' + sale.num + ' deja de existir.</p>' +
+      '<div class="at-llegada-botones"><button type="button" class="btn btn-negro btn-mini" data-accion="cl-unir-si" data-foco="cl-unir-si">Sí, unir</button>' +
+      '<button type="button" class="link-btn" data-accion="cl-unir-no" data-foco="cl-unir-no">Cancelar</button></div></div>';
+  }
+  function resultadosUnir(c) {
+    var q = sinAcentos(P.clUnir.buscar.trim()), qn = P.clUnir.buscar.replace(/\D/g, '').replace(/^0/, '');
+    if (!q) return '<li class="vacio">Escribí para buscar.</li>';
+    var l = Object.keys(IDX).map(function (k) { return IDX[k]; }).filter(function (x) {
+      if (x.id === c.id) return false;
+      var nums = [x.tel].concat(x.anteriores).join(' ').replace(/\D/g, '');
+      return sinAcentos(x.nombre).indexOf(q) >= 0 || (qn.length >= 3 && nums.indexOf(qn) >= 0) || String(x.num) === q.replace(/^n\.?\s*º?\s*/, '');
+    }).sort(function (a, b) { return b.visitas - a.visitas; }).slice(0, 8);
+    if (!l.length) return '<li class="vacio">No encontré a nadie así.</li>';
+    return l.map(function (x) {
+      return '<li><button type="button" class="cl-item" data-accion="cl-unir-pedir" data-a="' + esc(c.id) + '" data-b="' + esc(x.id) + '" data-foco="cl-unir-con-' + esc(x.id) + '">' +
+        '<span class="cl-nombre">' + esc(x.nombre) + '</span><span class="cl-dato">N.º ' + x.num + (x.tel ? ' · WhatsApp ' + esc(x.tel) : '') + ' · ' + plural(x.visitas, 'visita', 'visitas') + '</span><span class="cl-gasto">Elegir</span></button></li>';
+    }).join('');
+  }
   function plantillaFicha(c, h) {
     var hist = c.turnos.slice().reverse().slice(0, 40);
     var datos = [
@@ -2250,11 +2573,38 @@
       ['Lo que más se hace', c.favorito ? c.favorito.nombre + ' (' + plural(c.favorito.veces, 'vez', 'veces') + ')' : '—']
     ];
     var tel = telInfo(c.tel);
+    var herramienta = '';
+    if (P.clTel) {
+      herramienta = '<div class="cl-herr" role="group" aria-labelledby="cl-tel-t"><p class="cl-herr-t" id="cl-tel-t">Cambiar el número de ' + esc(primerNombre(c.nombre)) + '</p>' +
+        '<label class="campo-label" for="cl-tel">Número nuevo de WhatsApp</label>' +
+        '<input class="campo" id="cl-tel" type="tel" inputmode="tel" autocomplete="off" maxlength="20" placeholder="0981 123 456" data-campo="clTel.valor" value="' + esc(P.clTel.valor) + '">' +
+        (P.clTel.error ? '<p class="campo-error" role="alert">' + esc(P.clTel.error) + '</p>' : '') +
+        '<p class="suave cl-herr-nota">' + (c.tel ? 'El ' + esc(c.tel) + ' queda guardado como número anterior: si reserva con ese, se lo reconoce igual. ' : '') + 'Sus próximos turnos se le avisan al número nuevo.</p>' +
+        '<div class="at-llegada-botones"><button type="button" class="btn btn-negro btn-mini" data-accion="cl-tel-guardar" data-foco="cl-tel-guardar">Guardar número</button>' +
+        '<button type="button" class="link-btn" data-accion="cl-tel-cancelar">Cancelar</button></div></div>';
+    } else if (P.clUnir) {
+      herramienta = '<div class="cl-herr" role="group" aria-labelledby="cl-unir-t"><p class="cl-herr-t" id="cl-unir-t">¿Con qué ficha se junta?</p>' +
+        '<p class="suave cl-herr-nota">Para cuando el mismo cliente quedó dos veces, por ejemplo porque reservó con otro número o escribió su nombre distinto.</p>' +
+        '<label class="campo-label" for="cl-unir-buscar">Buscar por nombre, WhatsApp o N.º</label>' +
+        '<input class="campo" id="cl-unir-buscar" type="search" autocomplete="off" value="' + esc(P.clUnir.buscar) + '">' +
+        '<ul class="cl-lista cl-unir-res" id="cl-unir-res">' + resultadosUnir(c) + '</ul>' +
+        '<div class="at-llegada-botones"><button type="button" class="link-btn" data-accion="cl-unir-cancelar">Cancelar</button></div></div>';
+    }
+    var confirmar = P.clConfirmar && (P.clConfirmar.a === c.id || P.clConfirmar.b === c.id) && !REP.some(function (r) { return r.par === parDistinto(P.clConfirmar.a, P.clConfirmar.b); })
+      ? confirmacionUnir(P.clConfirmar.a, P.clConfirmar.b) : '';
+    var reps = repetidosDe(c);
     return '<button type="button" class="link-btn cl-volver" data-accion="cl-volver" data-foco="cl-volver">← Todos los clientes</button>' +
-      '<div class="cl-ficha-cab"><div><h2 class="cl-ficha-nombre" id="cl-ficha-t" tabindex="-1">' + esc(c.nombre) + '</h2>' +
-        '<p class="suave" style="margin:6px 0 0">' + (c.tel ? 'WhatsApp ' + esc(c.tel) : 'Sin WhatsApp') + '</p></div>' +
-        (tel.ok && !c.ejemplo ? '<a class="btn btn-linea btn-mini" ' + atributosWa(tel.wa, 'Hola ' + primerNombre(c.nombre) + ', te escribimos de ' + NEGOCIO + '.') + '>' + ICONOS.chat + 'Escribirle</a>' : '') +
-      '</div>' +
+      (P.avisoCliente ? '<p class="aviso-ok" role="status">' + esc(P.avisoCliente) + '</p>' : '') +
+      '<div class="cl-ficha-cab"><div><p class="cl-num">Cliente N.º ' + c.num + '</p><h2 class="cl-ficha-nombre" id="cl-ficha-t" tabindex="-1">' + esc(c.nombre) + '</h2>' +
+        '<p class="suave" style="margin:6px 0 0">' + (c.tel ? 'WhatsApp ' + esc(c.tel) : 'Sin WhatsApp') + '</p>' +
+        (c.anteriores.length ? '<p class="suave cl-anteriores">Números anteriores: ' + esc(c.anteriores.join(', ')) + '</p>' : '') + '</div>' +
+        '<div class="cl-ficha-botones">' +
+          (tel.ok && !c.ejemplo ? '<a class="btn btn-linea btn-mini" ' + atributosWa(tel.wa, 'Hola ' + primerNombre(c.nombre) + ', te escribimos de ' + NEGOCIO + '.') + '>' + ICONOS.chat + 'Escribirle</a>' : '') +
+          '<button type="button" class="btn btn-linea btn-mini" data-accion="cl-tel-abrir" data-foco="cl-tel-abrir"' + (P.clTel ? ' aria-expanded="true"' : ' aria-expanded="false"') + '>' + (c.tel ? 'Cambiar número' : 'Cargar número') + '</button>' +
+          '<button type="button" class="btn btn-linea btn-mini" data-accion="cl-unir-abrir" data-foco="cl-unir-abrir"' + (P.clUnir ? ' aria-expanded="true"' : ' aria-expanded="false"') + '>Unir con otra ficha</button>' +
+        '</div>' +
+      '</div>' + herramienta + confirmar +
+      reps.map(function (r) { return itemRepetido(r, c.id); }).join('') +
       (c.faltas >= 2 ? '<p class="hz-alerta">Faltó ' + c.faltas + ' veces sin avisar. Conviene confirmarle el turno el día anterior.</p>' : '') +
       '<div class="cifras" style="margin-top:20px">' +
         '<div class="cifra"><p class="cifra-label">Visitas</p><p class="cifra-valor">' + c.visitas + '</p></div>' +
@@ -2296,6 +2646,8 @@
     });
     for (var k = 0; k <= dias; k++) { var c = sumarDias(desde, k); if (c <= h.clave && HORAS[diaSemana(c)].length) diasConAtencion[diaSemana(c)] = (diasConAtencion[diaSemana(c)] || 0) + 1; }
     var maxCelda = Math.max.apply(null, [1].concat(Object.keys(mapa).map(function (x) { return mapa[x]; })));
+    // La casilla más llena, para explicar cómo se lee el mapa con un dato real
+    var ejemplo = Object.keys(mapa).sort(function (a, b) { return mapa[b] - mapa[a]; }).map(function (k) { var p = k.split('-'); return { wd: +p[0], hr: +p[1], n: mapa[k] }; })[0];
     var porHora = {};
     hechos.forEach(function (t) { var hh = Math.floor(t.min / 60); porHora[hh] = (porHora[hh] || 0) + 1; });
     var mejorDia = [1, 2, 3, 4, 5, 6].sort(function (a, b) { return (porDia[b] || 0) / (diasConAtencion[b] || 1) - (porDia[a] || 0) / (diasConAtencion[a] || 1); })[0];
@@ -2350,6 +2702,12 @@
       '<section class="rep-seccion" aria-labelledby="rep-mapa-t"><h2 class="pa-h3" id="rep-mapa-t">Días y horas con más clientes</h2>' +
         '<p class="rep-resumen">El día con más clientes es el <strong>' + DIAS[mejorDia] + '</strong>, con ' + String(promedio).replace('.', ',') + ' por día en promedio. La hora con más movimiento es de <strong>' + pad(mejorHora) + ':00 a ' + pad(mejorHora + 1) + ':00</strong>. ' +
         'Cada casilla cuenta los clientes atendidos en esa hora (' + PERIODOS_REP[P.repPeriodo][0].toLowerCase() + ').</p>' + tabla +
+        '<div class="rep-leyenda" aria-hidden="true"><span>Menos clientes</span><span class="rep-ley n1"></span><span class="rep-ley n2"></span><span class="rep-ley n3"></span><span class="rep-ley n4"></span><span>Más clientes</span>' +
+          '<span class="rep-ley-sep"></span><span class="rep-ley n0"></span><span>Cerrado o sin clientes</span></div>' +
+        '<p class="suave rep-como">Cómo se lee: las filas son los días y las columnas, la hora en que empieza el turno («09» es de 09:00 a 10:00). ' +
+          (ejemplo ? 'Por ejemplo, el ' + ejemplo.n + ' de la fila ' + DIAS_C[ejemplo.wd] + ' y la columna ' + pad(ejemplo.hr) + ' quiere decir que en los ' + PERIODOS_REP[P.repPeriodo][0].toLowerCase() +
+            ' se atendió a ' + ejemplo.n + ' clientes los ' + DIAS[ejemplo.wd] + (/s$/.test(DIAS[ejemplo.wd]) ? '' : 's') + ' de ' + pad(ejemplo.hr) + ':00 a ' + pad(ejemplo.hr + 1) + ':00. ' : '') +
+          'Sirve para ver cuándo conviene tener otro barbero y en qué horas tranquilas hacer trámites o promociones.</p>' +
       '</section>' +
       '<section class="rep-seccion" aria-labelledby="rep-gan-t"><h2 class="pa-h3" id="rep-gan-t">Ganancia mes a mes</h2>' +
         '<p class="rep-resumen">Lo que entró menos lo que salió de la caja en cada mes (servicios, ventas, compras y gastos).</p>' + ganancia +
@@ -2394,6 +2752,7 @@
       var h = ahoraPY();
       var est = estadoLocal(h);
       IDX = indiceClientes(h);
+      REP = posiblesRepetidos(IDX);
       var nav = ['atender', 'hoy', 'turnos', 'caja', 'stock', 'precios', 'horario', 'clientes', 'reportes'].map(function (k) {
         return '<button type="button" data-accion="vista" data-v="' + k + '" data-foco="v-' + k + '"' + (P.vista === k ? ' aria-current="page"' : '') + '>' + ICONOS[k] + TITULOS[k] + '</button>';
       }).join('');
@@ -2405,7 +2764,7 @@
           '<nav class="pa-nav" aria-label="Secciones del panel">' + nav + '</nav>' +
           '<div class="pa-aside-pie"><a href="#inicio">Ver el sitio</a><button type="button" data-accion="salir">Salir</button>' +
             (P.reiniciando
-              ? '<div class="pa-reinicio" role="group" aria-labelledby="pa-reinicio-t"><p id="pa-reinicio-t">Vuelven los datos de ejemplo de la agenda, la caja y el stock. Los precios, los cambios de horario y los turnos reservados en el sitio no se tocan.</p>' +
+              ? '<div class="pa-reinicio" role="group" aria-labelledby="pa-reinicio-t"><p id="pa-reinicio-t">Vuelven los datos de ejemplo de la agenda, la caja y el stock, y se deshacen los cambios de número y las fichas unidas. Los precios, los cambios de horario y los turnos reservados en el sitio no se tocan.</p>' +
                 '<div class="pa-reinicio-botones"><button type="button" class="btn btn-claro btn-mini" data-accion="reiniciar-si" data-foco="reiniciar-si">Reiniciar</button><button type="button" data-accion="reiniciar-no" data-foco="reiniciar">Cancelar</button></div></div>'
               : '<button type="button" data-accion="reiniciar" data-foco="reiniciar">Reiniciar datos de ejemplo</button>') +
           '</div></aside>' +
@@ -2525,7 +2884,7 @@
   /* ----- Vista previa de WhatsApp (turnos de ejemplo) ----- */
   var modalEl = document.getElementById('modal');
   function abrirPreview(t, tipo, volverA) {
-    P.preview = { tel: telInfo(t.tel).lindo || t.tel, texto: tipo === 'avisar' ? msjCancelacion(t) : tipo === 'esperando' ? msjEsperando(t) : msjRecordatorio(t), volverA: volverA };
+    P.preview = { tel: telInfo(t.tel).lindo || t.tel, texto: msjDe(t, tipo), volverA: volverA };
     modalEl.hidden = false;
     modalEl.innerHTML = '<div class="modal-fondo" data-accion="cerrar-preview"></div>' +
       '<div class="modal-caja" role="dialog" aria-modal="true" aria-labelledby="modal-titulo" aria-describedby="modal-nota">' +
@@ -2562,7 +2921,7 @@
     if (a === 'barra') { marcarBarra(+b.getAttribute('data-barra')); return; }
     if (a === 'vista') {
       P.vista = b.getAttribute('data-v'); P.abierto = null; P.accionProd = null; P.avisoCaja = ''; P.avisoStock = ''; P.avisoPrecios = ''; P.restablecer = false;
-      P.atVer = null; P.llegada = null; P.deshacer = null; P.avisoHorario = ''; P.cliente = null;
+      P.atVer = null; P.llegada = null; P.deshacer = null; P.avisoHorario = ''; P.cliente = null; limpiarCliente();
       renderPanel('v-' + P.vista);
       var main = document.getElementById('pa-main');
       if (main && main.getBoundingClientRect().top < 0) main.scrollIntoView({ block: 'start' });
@@ -2575,6 +2934,9 @@
     if (a === 'reiniciar-si') {
       D = datosNuevos(ahoraPY());
       guardarDatos();
+      CLI = registroVacio();
+      guardarRegistro();
+      P.cliente = null; limpiarCliente();
       P.reiniciando = false; P.abierto = null; P.accionProd = null; P.barra = null; P.vista = 'hoy'; P.avisoCaja = ''; P.avisoStock = '';
       renderPanel('v-hoy');
       renderReserva();
@@ -2603,10 +2965,10 @@
       renderReserva();
       return;
     }
-    if (a === 'recordar' || a === 'avisar') {
+    if (a === 'recordar' || a === 'avisar' || a === 'llamar') {
       t = buscarTurno(id);
       if (!t) return;
-      if (a === 'recordar') t.recordadoEn = Date.now(); else t.avisadoEn = Date.now();
+      if (a === 'recordar') t.recordadoEn = Date.now(); else if (a === 'llamar') t.llamadoEn = Date.now(); else t.avisadoEn = Date.now();
       if (a === 'avisar' && P.abierto && P.abierto.id === id) P.abierto = null;
       guardarTurno(t);
       var focoWa = b.getAttribute('data-foco');
@@ -2617,8 +2979,27 @@
     if (a === 'hz-tipo') { P.hz = Object.assign(hzVacio(b.getAttribute('data-t')), { fecha: P.hz.fecha, motivo: P.hz.motivo }); P.avisoHorario = ''; renderPanel('hz-tipo-' + P.hz.tipo); return; }
     if (a === 'hz-guardar') { if (guardarBloqueo()) renderPanel('pa-titulo'); return; }
     if (a === 'hz-quitar') { quitarBloqueo(id); renderPanel('pa-titulo'); return; }
-    if (a === 'cl-ver') { P.vista = 'clientes'; P.cliente = id; renderPanel('cl-ficha-t'); var m2 = document.getElementById('pa-main'); if (m2 && m2.getBoundingClientRect().top < 0) m2.scrollIntoView({ block: 'start' }); return; }
-    if (a === 'cl-volver') { var antes = P.cliente; P.cliente = null; renderPanel('cl-' + antes); return; }
+    if (a === 'cl-ver') { P.vista = 'clientes'; P.cliente = id; limpiarCliente(); renderPanel('cl-ficha-t'); var m2 = document.getElementById('pa-main'); if (m2 && m2.getBoundingClientRect().top < 0) m2.scrollIntoView({ block: 'start' }); return; }
+    if (a === 'cl-volver') { var antes = P.cliente; P.cliente = null; limpiarCliente(); renderPanel('cl-' + antes); return; }
+    if (a === 'cl-tel-abrir') { limpiarCliente(); P.clTel = { valor: '', error: '' }; renderPanel('cl-tel'); return; }
+    if (a === 'cl-tel-cancelar') { P.clTel = null; renderPanel('cl-tel-abrir'); return; }
+    if (a === 'cl-tel-guardar') { renderPanel(guardarNumeroCliente() ? 'cl-ficha-t' : 'cl-tel'); return; }
+    if (a === 'cl-unir-abrir') { limpiarCliente(); P.clUnir = { buscar: '' }; renderPanel('cl-unir-buscar'); return; }
+    if (a === 'cl-unir-cancelar') { P.clUnir = null; P.clConfirmar = null; renderPanel('cl-unir-abrir'); return; }
+    if (a === 'cl-unir-pedir') { P.avisoCliente = ''; P.clConfirmar = { a: b.getAttribute('data-a'), b: b.getAttribute('data-b') }; renderPanel('cl-unir-si'); return; }
+    if (a === 'cl-unir-no') {
+      var parNo = P.clConfirmar ? parDistinto(P.clConfirmar.a, P.clConfirmar.b) : '';
+      P.clConfirmar = null; renderPanel(['cl-unir-' + parNo, 'cl-unir-buscar', 'cl-ficha-t']); return;
+    }
+    if (a === 'cl-unir-si') { unirDesdePanel(); renderPanel(P.cliente ? 'cl-ficha-t' : 'cl-reps-t'); return; }
+    if (a === 'cl-distintos') {
+      var parSi = b.getAttribute('data-par');
+      if (CLI.distintos.indexOf(parSi) < 0) CLI.distintos.push(parSi);
+      guardarRegistro();
+      P.clConfirmar = null;
+      P.avisoCliente = 'Listo: las fichas N.º ' + parSi.replace('-', ' y N.º ') + ' quedan como clientes distintos.';
+      renderPanel(P.cliente ? 'cl-ficha-t' : 'cl-buscar'); return;
+    }
     if (a === 'cl-orden') { P.clOrden = b.getAttribute('data-o'); renderPanel('cl-orden-' + P.clOrden); return; }
     if (a === 'rep-periodo') { P.repPeriodo = b.getAttribute('data-p'); renderPanel('rep-' + P.repPeriodo); return; }
     if (a === 'at-sig') { atMover(1); renderPanel('at-card'); return; }
@@ -2629,9 +3010,10 @@
     if (a === 'at-novino') { atNoVino(id); renderPanel('at-card'); return; }
     if (a === 'at-posponer') { atPosponer(id); renderPanel('at-card'); return; }
     if (a === 'at-deshacer') { atDeshacer(); renderPanel('at-card'); return; }
-    if (a === 'at-llegada-abrir') { P.llegada = { servicio: 'corte', nombre: '' }; renderPanel('at-l-serv'); return; }
+    if (a === 'at-llegada-abrir') { P.llegada = llegadaVacia(); renderPanel('at-l-serv'); return; }
+    if (a === 'at-l-hora') { P.llegada.hora = +b.getAttribute('data-m'); P.llegada.error = ''; renderPanel('at-l-hora-' + P.llegada.hora); return; }
     if (a === 'at-llegada-cancelar') { P.llegada = null; renderPanel('at-llegada-abrir'); return; }
-    if (a === 'at-llegada-agregar') { atAgregarLlegada(); renderPanel('at-card'); return; }
+    if (a === 'at-llegada-agregar') { renderPanel(atAgregarLlegada() || 'at-card'); return; }
     if (a === 'esperando') {
       t = buscarTurno(id);
       if (t && t.ejemplo) abrirPreview(t, 'esperando', b.getAttribute('data-foco'));
@@ -2703,6 +3085,12 @@
       return;
     }
     if (el.id === 'cl-buscar') { P.clBuscar = el.value; filtrarClientes(); return; }
+    if (el.id === 'cl-unir-buscar' && P.clUnir) {
+      P.clUnir.buscar = el.value;
+      var res = document.getElementById('cl-unir-res'), c = IDX[P.cliente];
+      if (res && c) res.innerHTML = resultadosUnir(c);
+      return;
+    }
     if (el.tagName === 'SELECT' || el.type === 'checkbox') return;
     if (guardarCampo(el)) actualizarFormularios();
   });
@@ -2716,7 +3104,8 @@
     }
     if (el.tagName !== 'SELECT' && el.type !== 'checkbox') return;
     if (!guardarCampo(el)) return;
-    if (el.id === 'np-compra' || el.id === 'np-tipo') renderPanel(el.id);
+    if (el.id === 'at-l-serv') { P.llegada.hora = null; P.llegada.error = ''; renderPanel('at-l-serv'); }
+    else if (el.id === 'np-compra' || el.id === 'np-tipo') renderPanel(el.id);
     else actualizarFormularios();
   });
   panelEl.addEventListener('mouseover', function (e) {
@@ -2741,7 +3130,7 @@
 
   // Atajos de Atender: el dueño pasa de un cliente a otro y cobra sin buscar botones
   function teclaAtender(e) {
-    var enCampo = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
+    var enCampo = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || !!(e.target.closest && e.target.closest('.at-llegada'));
     if (enCampo) {
       if (e.key === 'Escape' && P.llegada) { e.preventDefault(); P.llegada = null; renderPanel('at-llegada-abrir'); }
       return;
@@ -2759,7 +3148,7 @@
     else if (k === 'n') { if (actual) atNoVino(actual.id); }
     else if (k === 'p') { if (actual) atPosponer(actual.id); }
     else if (k === 'z') atDeshacer();
-    else if (k === 'a') { e.preventDefault(); P.llegada = { servicio: 'corte', nombre: '' }; renderPanel('at-l-serv'); return; }
+    else if (k === 'a') { e.preventDefault(); P.llegada = llegadaVacia(); renderPanel('at-l-serv'); return; }
     else hecho = false;
     if (!hecho) return;
     e.preventDefault();
@@ -2767,7 +3156,7 @@
   }
   // Que la barra espaciadora no "toque" el botón que quedó con foco: en Atender, pasa al siguiente
   document.addEventListener('keyup', function (e) {
-    if (e.key === ' ' && !panelEl.hidden && P.acceso && P.vista === 'atender' && !/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) e.preventDefault();
+    if (e.key === ' ' && !panelEl.hidden && P.acceso && P.vista === 'atender' && !/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) && !(e.target.closest && e.target.closest('.at-llegada'))) e.preventDefault();
   });
 
   // Si el sitio está abierto en otra pestaña, se actualiza cuando alguien reserva o cancela
@@ -2779,6 +3168,9 @@
       if (!panelEl.hidden && P.acceso) renderPanel();
     } else if (e.key === CLAVE_PANEL) {
       D = cargarDatos();
+      if (!panelEl.hidden && P.acceso) renderPanel();
+    } else if (e.key === CLAVE_CLIENTES) {
+      CLI = cargarRegistro();
       if (!panelEl.hidden && P.acceso) renderPanel();
     } else if (e.key === CLAVE_HORARIO) {
       BLOQ = cargarBloqueos();
