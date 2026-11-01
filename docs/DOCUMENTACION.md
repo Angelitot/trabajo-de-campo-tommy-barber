@@ -81,7 +81,8 @@ La lista no indica cuánto dura cada servicio. Las duraciones del sistema son es
 
 - Entrar al panel con un PIN.
 - Atender rápido mientras corta: ver de un vistazo el turno que corresponde ahora y el siguiente, y cobrar, marcar «no vino» o pasarlo después con un toque o una tecla.
-- Sumar a la fila a alguien que llega sin turno, ya que el dueño atiende por orden de llegada.
+- Sumar a la fila a alguien que llega sin turno, ya que el dueño atiende por orden de llegada. El sistema le da la primera hora libre que queda en el día (o la que se elija entre las libres) y, si hoy ya no hay lugar, le ofrece las horas libres del próximo día.
+- Tomarle el WhatsApp al que llega sin turno y se va, para avisarle cuando le falte un cliente.
 - Ver la agenda del día; cobrar cada turno indicando el medio de pago, marcar «no vino» o cancelar.
 - Ver los turnos de los próximos días y mandar recordatorios por WhatsApp.
 - Cancelar un turno y avisarle al cliente por WhatsApp.
@@ -90,6 +91,7 @@ La lista no indica cuánto dura cada servicio. Las duraciones del sistema son es
 - Cambiar el precio y la duración de cada servicio o combo.
 - Cerrar días u horas, o abrir con otro horario un día puntual, sin que el sitio ofrezca esos turnos.
 - Conocer a sus clientes: cuántas veces vinieron, qué se hacen, cuánto gastaron y si faltan.
+- Tener una sola ficha por cliente: que no se dupliquen, cambiarle el número si cambia de celular y juntar dos fichas que resultan ser de la misma persona.
 - Ver reportes: días y horas con más clientes, ganancia mes a mes, faltas y cancelaciones.
 
 ### No funcionales
@@ -114,6 +116,7 @@ La lista no indica cuánto dura cada servicio. Las duraciones del sistema son es
 | 28/10/2026 | Pantalla Atender | El turno actual y el siguiente en una sola pantalla, con atajos de teclado, deshacer y clientes sin turno. |
 | 28/10/2026 | Cuestionario de mejoras | Se definieron las mejoras siguientes y se confirmó el WhatsApp del local. Las duraciones quedan aproximadas porque ni el dueño las conoce con exactitud. |
 | 28/10/2026 | Mejoras del panel y del sitio | Cambios de horario, fichas de clientes con aviso de faltas, reportes, galería de cortes, WhatsApp del local y cambio de turno desde «Mis turnos». |
+| 31/10/2026 | Sin turno y registro de clientes | El que llega sin turno recibe la primera hora libre del día y puede dejar su WhatsApp para que le avisen. Cada cliente tiene un número interno; se detectan fichas repetidas, se unen y se cambia el número sin perder el historial. El mapa de calor de Reportes tiene leyenda. |
 
 ## 5. Diseño visual
 
@@ -191,7 +194,7 @@ La interfaz se arma con plantillas de texto y responde a los clics con un único
 
 ### Datos que guarda
 
-Mientras no haya base de datos, todo se guarda en el `localStorage` del navegador, en cuatro claves:
+Mientras no haya base de datos, todo se guarda en el `localStorage` del navegador, en cinco claves:
 
 | Clave | Contenido |
 |---|---|
@@ -199,6 +202,7 @@ Mientras no haya base de datos, todo se guarda en el `localStorage` del navegado
 | `tommybarber-panel` | Agenda, caja, productos y movimientos de stock del panel |
 | `tommybarber-horario` | Cambios de horario: días cerrados, horas cerradas y horarios especiales |
 | `tommybarber-precios` | Precios y duraciones que cambió el dueño, y el historial de cambios |
+| `tommybarber-clientes` | Registro de clientes: el número interno de cada uno, sus números anteriores, las fichas unidas y los pares que el dueño confirmó que son personas distintas |
 
 **Turno**
 
@@ -214,7 +218,9 @@ Mientras no haya base de datos, todo se guarda en el `localStorage` del navegado
 | `canceladoPor`, `canceladoEn` | Quién lo canceló (`cliente` o `barberia`) y cuándo |
 | `recordadoEn`, `avisadoEn` | Cuándo se mandó el recordatorio o el aviso de cancelación |
 | `orden` | Lugar en la fila de Atender, si el dueño lo pasó después de otro |
-| `sinTurno` | Si es alguien que llegó al local sin reservar |
+| `sinTurno`, `llego` | Si es alguien que llegó al local sin reservar, y a qué hora llegó (`min` es la hora libre que se le dio) |
+| `llamadoEn` | Cuándo se le avisó por WhatsApp que ya le tocaba, si se fue y dejó su número |
+| `enLocal` | Si el turno lo anotó el dueño en el local (por ejemplo, para otro día porque hoy no había lugar) |
 | `antes`, `cambiadoEn` | Si el cliente lo cambió de día u hora: el horario anterior y cuándo lo cambió |
 
 **Movimiento de caja:** fecha, hora, tipo (`entrada` o `salida`), categoría (servicio, venta de producto, compra de stock, gasto u otro ingreso), concepto, monto, medio de pago y, si corresponde, el turno que lo generó.
@@ -227,7 +233,12 @@ Mientras no haya base de datos, todo se guarda en el `localStorage` del navegado
 
 **Cambio de horario:** tipo (`cerrado`, `franja` o `especial`), fecha (y último día, si cierra varios), horas de inicio y fin, y motivo.
 
-**Cliente:** no se guarda aparte. El panel lo arma juntando todos los turnos con el mismo número de WhatsApp (o el mismo nombre, si no dejó número).
+**Cliente:** cada cliente tiene un **número interno** (N.º 1, 2, 3…), que es su clave y nunca cambia. Un turno es de un cliente cuando coinciden el WhatsApp **y** el nombre y apellido (sin importar mayúsculas ni acentos); si no dejó número, se usa solo el nombre. Se eligió así y no el teléfono como clave por dos motivos:
+
+- Un papá que reserva para su hijo con su propio número tiene que quedar como dos clientes distintos.
+- Si un cliente cambia de número, con el teléfono como clave habría que cambiarlo en todos sus turnos. Con un número interno, se cambia un solo dato y el anterior queda guardado.
+
+En la base de datos esto queda como una tabla `cliente` con un `id` como clave primaria y una restricción `UNIQUE (telefono, nombre_normalizado)`, una tabla `cliente_telefono_anterior` con los números viejos, y una clave foránea `cliente_id` en cada turno.
 
 ### Reglas del negocio
 
@@ -244,6 +255,10 @@ Mientras no haya base de datos, todo se guarda en el `localStorage` del navegado
 - **Turnos afuera del horario:** si el dueño cierra un horario que ya tenía turnos, el sistema se los muestra para que los cancele y les avise por WhatsApp. No los cancela solo.
 - **Cambio de turno:** el cliente lo puede cambiar mientras no haya empezado. Conserva el código, el precio y la duración; el horario anterior queda libre y el recordatorio se tiene que mandar de nuevo.
 - **Prioridad del turno:** el turno reservado tiene prioridad; los que llegan sin turno se atienden en los huecos.
+- **Hora del que llega sin turno:** se le da la primera hora libre de la grilla de 30 minutos que queda en el día, contando la duración del servicio. La hora en curso todavía cuenta si empezó hace 10 minutos o menos y está libre. Los turnos ya cobrados o que no vinieron dejan su hora libre. Si hoy no entra, se ofrecen las horas libres del próximo día con lugar (hasta 14 días). Esa hora queda ocupada también para las reservas del sitio.
+- **Aviso al que se fue:** si el que llegó sin turno dejó su WhatsApp, el aviso aparece cuando le falta un cliente (y el de antes ya llegó a su hora) o cuando ya le toca. El mensaje calcula cuántos minutos faltan.
+- **Cliente repetido:** si dos fichas tienen el mismo nombre y apellido con otro número, o el mismo número con otro nombre, el panel pregunta si son la misma persona. Al unirlas queda el número interno más antiguo y el último WhatsApp que usó; el otro pasa a «números anteriores». Si el dueño dice que son distintos, no se vuelve a preguntar.
+- **Cambio de número:** el número viejo queda guardado, así una reserva que llegue con ese número y el mismo nombre se reconoce igual. Los próximos turnos del cliente pasan al número nuevo para que los recordatorios le lleguen.
 
 **Estados del turno**
 
@@ -265,7 +280,7 @@ stateDiagram-v2
 
 ### Datos de ejemplo
 
-Para que el panel se pueda mostrar sin esperar reservas reales, el sistema genera una agenda de ejemplo para hoy y los próximos días, un historial de turnos de los últimos seis meses (unos 500 clientes, algunos fijos y otros ocasionales, con faltas y cancelaciones), la caja de esos días y algunos movimientos de stock. Los datos se generan a partir de la fecha, así que el mismo día siempre muestra los mismos. Los turnos de ejemplo usan teléfonos `0981 000 …`: en esos, «Recordar» muestra el mensaje en pantalla en vez de abrir WhatsApp. El botón **Reiniciar datos de ejemplo** vuelve todo al principio.
+Para que el panel se pueda mostrar sin esperar reservas reales, el sistema genera una agenda de ejemplo para hoy y los próximos días, un historial de turnos de los últimos seis meses (unos 500 clientes, algunos fijos y otros ocasionales, con faltas y cancelaciones), la caja de esos días y algunos movimientos de stock. Hay dos casos armados para mostrar los clientes repetidos: Rodrigo Villalba, que cambió de número hace tres semanas y reservó con el nuevo, y Thiago Duarte, que reserva con el número de su papá, Óscar Duarte. Los datos se generan a partir de la fecha, así que el mismo día siempre muestra los mismos. Los turnos de ejemplo usan teléfonos `0981 000 …`: en esos, «Recordar» muestra el mensaje en pantalla en vez de abrir WhatsApp. El botón **Reiniciar datos de ejemplo** vuelve todo al principio.
 
 ## 7. Funcionalidades
 
@@ -313,7 +328,19 @@ Se entra con **Acceso del dueño**, al pie de la página. El PIN de prueba es **
 - **¿Venís?**: abre WhatsApp con «te estamos esperando» para el cliente atrasado.
 - **Deshacer**, por si tocó algo sin querer.
 
-Al lado se ven el siguiente y la fila completa del día. Para alguien que llega sin turno está **Llegó alguien sin turno**: se elige el servicio y se suma a la fila.
+Al lado se ven el siguiente y la fila completa del día. Para alguien que llega sin turno está **Llegó alguien sin turno**:
+
+- Se elige el servicio y, si quiere, su nombre y su WhatsApp.
+- El sistema ya elige **la primera hora libre que queda en el día**, no la hora en que llegó. Si esa hora es la que sigue al cliente que se está atendiendo, lo dice («al terminar con Nahuel»). Se puede tocar otra de las horas libres.
+- Si hoy ya no hay lugar para ese servicio, muestra las horas libres del próximo día y el botón cambia a «Darle turno el miércoles 28…».
+
+![Llegó alguien sin turno](capturas/22-llegada-sin-turno.webp)
+
+Si el cliente dejó su número y se fue, cuando le falta un cliente aparece **Avisarle por WhatsApp**, con el mensaje ya escrito. Después queda anotado «Le avisaste hoy a las…».
+
+> Hola Pedro, te escribimos de Tommy Barber: ya casi es tu turno. Estamos con el cliente de antes y en unos 25 minutos te toca. Te esperamos en Constitución esquina, Quiindy.
+
+![Aviso al que se fue](capturas/23-llegada-aviso.webp)
 
 Todo se puede hacer con el teclado, sin el mouse:
 
@@ -368,7 +395,7 @@ Antes de guardar, el sistema avisa si hay turnos reservados en ese horario. Desp
 
 ![Panel: Horario](capturas/18-panel-horario.webp)
 
-**Clientes.** Reúne a cada cliente por su número de WhatsApp. La lista se ordena por los que más vienen, los recientes o los que faltaron, y se busca por nombre o número. La ficha de cada cliente muestra:
+**Clientes.** Cada cliente tiene su número interno (N.º) y se reconoce por su WhatsApp junto con su nombre y apellido. La lista se ordena por los que más vienen, los recientes o los que faltaron, y se busca por nombre, número actual o número anterior. La ficha de cada cliente muestra:
 
 - visitas, cuánto gastó, faltas y cancelaciones;
 - desde cuándo es cliente, su último corte, su próximo turno y lo que más se hace;
@@ -376,13 +403,23 @@ Antes de guardar, el sistema avisa si hay turnos reservados en ese horario. Desp
 
 Si un cliente faltó antes, Atender, Hoy y Turnos lo marcan con «Faltó 2 veces», para que el dueño decida si le confirma el turno. No se bloquea a nadie.
 
+Para que no haya clientes duplicados:
+
+- **Posibles clientes repetidos:** arriba de la lista aparecen las fichas que pueden ser de la misma persona (mismo nombre con otro número, o mismo número con otro nombre). Se resuelven con **Es el mismo: unir** o **Son distintos**.
+- **Cambiar número:** desde la ficha. El número anterior queda guardado y los próximos turnos pasan al nuevo.
+- **Unir con otra ficha:** desde la ficha, buscando la otra por nombre, número o N.º. Antes de unir, el sistema dice qué N.º y qué número quedan.
+
+![Posibles clientes repetidos](capturas/24-clientes-repetidos.webp)
+
+![Cambiar el número de un cliente](capturas/25-cliente-cambiar-numero.webp)
+
 ![Panel: Clientes](capturas/19-panel-clientes.webp)
 
 ![Ficha de un cliente](capturas/20-panel-cliente.webp)
 
 **Reportes.** Para las últimas 4 semanas, 3 meses o 6 meses, muestra tres cosas:
 
-- **Días y horas con más clientes:** un mapa de calor de lunes a sábado, de 08:00 a 18:00, con el día y la hora con más movimiento.
+- **Días y horas con más clientes:** un mapa de calor de lunes a sábado, de 08:00 a 18:00, con el día y la hora con más movimiento. Cada casilla es la cantidad de clientes atendidos ese día de la semana en esa hora, sumando todo el período; la leyenda va de «menos clientes» a «más clientes», y el gris es cerrado o sin clientes.
 - **Ganancia mes a mes:** lo que entró menos lo que salió de la caja en cada uno de los últimos seis meses.
 - **Faltas y cancelaciones:** qué parte de los turnos no vino o se canceló, y los clientes que más faltan.
 
@@ -411,7 +448,7 @@ Medición con Lighthouse en modo celular, con conexión móvil simulada:
 
 ## 9. Pruebas
 
-La carpeta `pruebas/` tiene cuatro recorridos automáticos con Playwright, que abren el sitio en un navegador real con el reloj fijo en el martes 27/10/2026 a las 10:05 (hora de Paraguay). Cada recorrido se hace en computadora y en celular.
+La carpeta `pruebas/` tiene cinco recorridos automáticos con Playwright, que abren el sitio en un navegador real con el reloj fijo en el martes 27/10/2026 a las 10:05 (hora de Paraguay). Cada recorrido se hace en computadora y en celular.
 
 - **`probar_todo.py`** (50 comprobaciones por pantalla) prueba:
   - los precios oficiales;
@@ -426,6 +463,7 @@ La carpeta `pruebas/` tiene cuatro recorridos automáticos con Playwright, que a
   - que no haya errores en la consola.
 - **`probar_atender.py`** prueba la pantalla Atender: la entrada directa con `#atender`, moverse con Espacio y las flechas, cobrar con la tecla 1 y que entre a la caja, deshacer, pasar a alguien después del siguiente, «no vino» solo después de la hora, sumar a alguien sin turno y vaciar la fila.
 - **`probar_mejoras.py`** prueba la galería y el WhatsApp del local; el cambio de turno desde «Mis turnos» y que el dueño lo vea; los cambios de horario (cerrar un día con turnos, avisar a los afectados, que el sitio y la reserva lo respeten, cerrar unas horas, abrir un domingo y quitar un cambio); los clientes (lista, búsqueda, ficha y faltas en Atender) y los reportes.
+- **`probar_llegada_clientes.py`** prueba la llegada sin turno (que se le dé la primera hora libre y no la hora actual, elegir otra hora, el número mal escrito, el aviso por WhatsApp cuando le falta un cliente y el turno para otro día si hoy no hay lugar) y el registro de clientes (N.º interno, posibles repetidos, «son distintos», unir fichas, buscar por el número anterior, cambiar número y que los cambios sigan después de recargar).
 - **`probar_precios.py`** prueba el cambio de precios desde el panel: la validación, el guardado, el historial, el sitio actualizado, que los turnos reservados conserven su precio y la vuelta a la lista original.
 
 Cómo correrlas:
@@ -437,6 +475,7 @@ python pruebas/probar_todo.py
 python pruebas/probar_precios.py
 python pruebas/probar_atender.py
 python pruebas/probar_mejoras.py
+python pruebas/probar_llegada_clientes.py
 ```
 
 También se pueden correr contra la versión publicada, pasando la dirección como argumento. Las capturas quedan en `pruebas/capturas/`.
@@ -457,6 +496,7 @@ El código está en un repositorio privado de GitHub con los integrantes del gru
 | #3 | Esta documentación y las pruebas automáticas |
 | #4 | Pantalla Atender |
 | #5 | Cambios de horario, clientes, reportes, galería, WhatsApp del local y cambio de turno |
+| #6 | Hora libre para el que llega sin turno, aviso por WhatsApp y registro de clientes sin duplicados |
 
 ## 12. Limitaciones y próximos pasos
 

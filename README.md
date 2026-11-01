@@ -6,14 +6,14 @@ Trabajo de campo: diseño web para **Tommy Barber**, barbería de Quiindy (Const
 - **Reserva de turnos:** servicio o combo, día y hora según el horario real del local, nombre y WhatsApp, y comprobante.
 - **Mis turnos:** el cliente ve los turnos que reservó desde su celular y, mientras no hayan empezado, puede cambiarlos de día u hora o cancelarlos.
 - **Panel del dueño:**
-  - **Atender:** el turno que corresponde ahora, en grande, con todo para cobrar, marcar «no vino» o pasarlo después; el siguiente al lado y la fila del día. Se usa con una mano o con el teclado (espacio y flechas para moverse, 1-2-3 para cobrar). Se entra directo con `#atender`.
+  - **Atender:** el turno que corresponde ahora, en grande, con todo para cobrar, marcar «no vino» o pasarlo después; el siguiente al lado y la fila del día. Se usa con una mano o con el teclado (espacio y flechas para moverse, 1-2-3 para cobrar). Al que llega sin turno le da la primera hora libre del día y, si deja su WhatsApp, avisa cuándo escribirle. Se entra directo con `#atender`.
   - **Hoy:** agenda del día para cobrar, marcar «no vino» o cancelar, la caja del día y lo que entró en la semana.
   - **Turnos:** los turnos de los próximos días, con recordatorio por WhatsApp, cancelación y aviso al cliente.
   - **Caja:** lo que entra, los gastos y la ganancia de hoy, la semana o el mes.
   - **Stock:** insumos y productos para vender; el dueño los carga, resta lo que usa o vende y suma lo que compra.
   - **Precios:** el dueño cambia el precio y la duración de cada servicio o combo, o vuelve a la lista original del local.
   - **Horario:** cerrar días u horas, o abrir con otro horario un día puntual; el sitio deja de ofrecer esos turnos y avisa el cambio.
-  - **Clientes:** ficha de cada cliente (visitas, gasto, faltas, historial) y aviso en Atender cuando alguien suele faltar.
+  - **Clientes:** ficha de cada cliente con su N.º (visitas, gasto, faltas, historial), aviso en Atender cuando alguien suele faltar, posibles repetidos para unir, y cambio de número sin perder el historial.
   - **Reportes:** días y horas con más clientes, ganancia mes a mes, faltas y cancelaciones.
 
 La documentación completa del trabajo (relevamiento, requerimientos, diseño, cómo está hecho el sistema, pruebas y capturas) está en [docs/DOCUMENTACION.md](docs/DOCUMENTACION.md).
@@ -32,9 +32,9 @@ Es un prototipo que funciona en el navegador, sin servidor: los turnos, la caja,
 2. Arriba aparece «Tenés turno…». En **Mis turnos** se ve el turno y se puede cambiar de día u hora o cancelar.
 3. Entrá al panel y abrí **Turnos**: tocá **Recordar por WhatsApp** en tu turno y se abre WhatsApp con el recordatorio para tu número.
 4. Cancelalo desde el panel: el sistema ofrece **Avisar por WhatsApp** con el mensaje de cancelación, y en **Mis turnos** dice que la barbería lo canceló.
-5. Abrí **Atender**: aparece el cliente que corresponde ahora. Probá Espacio y las flechas para moverte, **1** para cobrar en efectivo y **Z** para deshacer. Con **A** sumás a alguien que llegó sin turno.
+5. Abrí **Atender**: aparece el cliente que corresponde ahora. Probá Espacio y las flechas para moverte, **1** para cobrar en efectivo y **Z** para deshacer. Con **A** sumás a alguien que llegó sin turno: ya viene elegida la primera hora libre del día, y si deja su WhatsApp te aparece el botón para avisarle cuando le falte un cliente.
 6. En **Horario**, cerrá mañana con el motivo «Feriado»: el sistema muestra los turnos que quedan afuera para avisarles, y en el sitio el día figura cerrado.
-7. En **Clientes**, buscá un cliente y abrí su ficha. En **Reportes**, mirá el mapa de días y horas.
+7. En **Clientes**, resolvé los posibles repetidos de arriba (unir o «son distintos»), buscá un cliente y abrí su ficha: ahí podés cambiarle el número. En **Reportes**, mirá el mapa de días y horas.
 8. En **Stock**, cargá un insumo nuevo, usá uno y registrá una compra con lo que pagaste: el gasto aparece en **Caja**.
 9. En **Precios**, cambiá el precio de un corte y guardá: el sitio lo muestra enseguida. Los turnos ya reservados mantienen el precio con que se reservaron.
 10. Al terminar, **Reiniciar datos de ejemplo** (abajo del menú del panel) vuelve la agenda, la caja y el stock al principio; en **Precios** está **Volver a la lista original del local** y en **Horario** se quitan los cambios cargados.
@@ -68,6 +68,7 @@ python pruebas/probar_todo.py
 python pruebas/probar_precios.py
 python pruebas/probar_atender.py
 python pruebas/probar_mejoras.py
+python pruebas/probar_llegada_clientes.py
 ```
 
 Al final dicen «todo bien» o qué falló. Las capturas quedan en `pruebas/capturas/`.
