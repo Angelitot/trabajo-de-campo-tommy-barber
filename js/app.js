@@ -944,9 +944,10 @@
       var slots = [], paso0 = false;
       tramos.forEach(function (tr) {
         for (var m = tr[0]; m + dur <= tr[1]; m += PASO) {
-          if (k === 0 && m < h.min + ANTICIPACION) { paso0 = true; continue; }
           // Solo se muestran las horas en que trabaja alguno de los barberos elegidos
           if (!cands.some(function (b) { return trabajaA(b, clave, m, dur); })) continue;
+          // Hoy, las horas que ya pasaron no se ofrecen (si se trabajaba, el día dice «ya no hay»)
+          if (k === 0 && m < h.min + ANTICIPACION) { paso0 = true; continue; }
           slots.push({ m: m, libre: !!elegirBarbero(cands, clave, m, dur, otros) });
         }
       });
@@ -3024,7 +3025,7 @@
     BLOQ.push(b);
     guardarBloqueos();
     var afuera = turnosAfuera(BLOQ, b.fecha, b.hasta || b.fecha).length;
-    P.avisoHorario = 'Guardaste: ' + fechasBloqueo(b).replace(/^D/, 'd') + ', ' + minus(textoBloqueo(b)) + '.' + (afuera ? ' Quedaron ' + plural(afuera, 'turno', 'turnos') + ' afuera: avisales desde la lista.' : ' El sitio ya no ofrece esos horarios.');
+    P.avisoHorario = 'Guardaste: ' + fechasBloqueo(b).replace(/^D/, 'd') + ', ' + (b.barbero ? textoBloqueo(b) : minus(textoBloqueo(b))) + '.' + (afuera ? ' Quedaron ' + plural(afuera, 'turno', 'turnos') + ' afuera: avisales desde la lista.' : ' El sitio ya no ofrece esos horarios.');
     P.hz = hzVacio(P.hz.tipo);
     actualizarSitioHorario();
     return true;
