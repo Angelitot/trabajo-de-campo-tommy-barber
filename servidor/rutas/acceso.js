@@ -28,7 +28,7 @@ export function autenticar(ctx) {
     const { rows } = await ctx.pool.query(
       `SELECT s.id AS sesion_id, s.ultimo_uso, u.* FROM sesion s JOIN usuario u ON u.id = s.usuario_id
        LEFT JOIN barbero b ON b.id = u.barbero_id
-       WHERE s.token_hash = $1 AND s.expira_en > now() AND u.activo AND (u.barbero_id IS NULL OR b.activo)`, [hash]);
+       WHERE s.token_hash = $1 AND s.expira_en > now() AND u.activo AND (u.rol = 'dueno' OR b.activo)`, [hash]);
     if (!rows.length) return res.status(401).json({ error: 'sin-sesion', mensaje: 'La sesión se cerró. Ingresá de nuevo.' });
     const u = rows[0];
     // La sesión dura 30 días desde el último uso
@@ -56,7 +56,11 @@ export async function asegurarDueno(pool, usuario, clave, log = console.log) {
   if (!usuarioValido(u)) { log('Aviso: DUENO_USUARIO tiene que tener de 3 a 30 letras minúsculas, números, punto o guion.'); return false; }
   const problema = problemaClave(clave, u);
   if (problema) { log('Aviso: DUENO_CLAVE no sirve. ' + problema); return false; }
-  await pool.query("INSERT INTO usuario (nombre, usuario, clave_hash, rol) VALUES ('Dueño', $1, $2, 'dueno') ON CONFLICT (usuario) DO NOTHING", [u, await hashClave(clave)]);
+  // El dueño también es barbero: su cuenta queda unida al primer barbero que todavía no tenga cuenta
+  await pool.query(
+    `INSERT INTO usuario (nombre, usuario, clave_hash, rol, barbero_id)
+     VALUES ('Dueño', $1, $2, 'dueno', (SELECT min(b.id) FROM barbero b WHERE b.activo AND NOT EXISTS (SELECT 1 FROM usuario x WHERE x.barbero_id = b.id AND x.activo)))
+     ON CONFLICT (usuario) DO NOTHING`, [u, await hashClave(clave)]);
   log('Se creó la cuenta del dueño (' + u + ').');
   return true;
 }
@@ -72,7 +76,7 @@ export function rutasAcceso(ctx) {
       throw new ErrorApi(429, 'muchos-intentos', `Hubo muchos intentos fallidos. Esperá ${espera} ${espera === 1 ? 'minuto' : 'minutos'} y probá de nuevo.`);
     }
     const u = (await ctx.pool.query(
-      `SELECT u.* FROM usuario u LEFT JOIN barbero b ON b.id = u.barbero_id WHERE u.usuario = $1 AND u.activo AND (u.barbero_id IS NULL OR b.activo)`, [usuario])).rows[0];
+      `SELECT u.* FROM usuario u LEFT JOIN barbero b ON b.id = u.barbero_id WHERE u.usuario = $1 AND u.activo AND (u.rol = 'dueno' OR b.activo)`, [usuario])).rows[0];
     const ok = await verificarClave(d.clave, u ? u.clave_hash : await hashDeRelleno());
     if (!u || !ok) {
       ctx.freno.fallo(usuario, req.ip);

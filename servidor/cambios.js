@@ -112,7 +112,10 @@ export async function aplicarCambios(c, yo, paquete) {
       const id = idBarbero(b.id);
       const antes = id && existentes.get(id);
       if (!antes) throw conflicto('Ese barbero ya no existe.');
-      if (!b.activo && antes.activo) quitados.push(id);
+      if (!b.activo && antes.activo) {
+        if ((await c.query("SELECT 1 FROM usuario WHERE barbero_id = $1 AND rol = 'dueno' AND activo", [id])).rows.length) throw invalido('No se puede quitar al dueño.');
+        quitados.push(id);
+      }
       if (b.activo && !antes.activo) throw invalido('Un barbero quitado no vuelve: agregalo de nuevo.');
       await c.query('UPDATE barbero SET nombre = $2, activo = $3, quitado_en = CASE WHEN $3 THEN NULL ELSE coalesce(quitado_en, now()) END WHERE id = $1', [id, b.nombre, b.activo]);
       await guardarDias(id, b.dias);
@@ -316,8 +319,8 @@ export async function aplicarCambios(c, yo, paquete) {
         "SELECT count(*) AS n FROM turno WHERE barbero_id = $1 AND estado = 'confirmado' AND (fecha > $2 OR (fecha = $2 AND hora > $3::time))", [id, h.clave, hhmm(h.min)])).rows[0].n;
       if (pend) throw conflicto('Ese barbero todavía tiene turnos pendientes: pasalos a otro barbero o cancelalos.');
       // Su acceso al panel se cierra
-      await c.query('UPDATE usuario SET activo = false WHERE barbero_id = $1', [id]);
-      await c.query('DELETE FROM sesion WHERE usuario_id IN (SELECT id FROM usuario WHERE barbero_id = $1)', [id]);
+      await c.query("UPDATE usuario SET activo = false WHERE barbero_id = $1 AND rol = 'barbero'", [id]);
+      await c.query("DELETE FROM sesion WHERE usuario_id IN (SELECT id FROM usuario WHERE barbero_id = $1 AND rol = 'barbero')", [id]);
     }
   }
   for (const parte of partes) await subirVersion(c, parte);

@@ -750,3 +750,7 @@ kbd{display:inline-flex;align-items:center;justify-content:center;min-width:24px
 .bb-acceso-t{margin:0 0 10px;font-size:15px}
 .bb-cuenta{max-width:420px}
 .bb-cuenta label{display:block;margin:12px 0 6px;font-weight:700;font-size:15px}
+.bb-dueno{display:inline-block;margin-left:6px;padding:1px 8px;border:2px solid #000;border-radius:999px;font-size:13px;font-weight:700;vertical-align:middle}
+.prueba{margin-bottom:18px;max-width:640px}
+.prueba p{margin:8px 0}
+.prueba-cero{margin-top:22px}

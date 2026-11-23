@@ -317,6 +317,8 @@ stateDiagram-v2
 
 Para que el panel se pueda mostrar sin esperar reservas reales, el sistema genera una agenda de ejemplo para hoy y los próximos días, un historial de turnos de los últimos seis meses (unos 500 clientes, algunos fijos y otros ocasionales, con faltas y cancelaciones), la caja de esos días y algunos movimientos de stock. Los turnos de ejemplo son del primer barbero. Hay dos casos armados para mostrar los clientes repetidos: Rodrigo Villalba, que cambió de número hace tres semanas y reservó con el nuevo, y Thiago Duarte, que reserva con el número de su papá, Óscar Duarte. Los datos se generan a partir de la fecha, así que el mismo día siempre muestra los mismos. Los turnos de ejemplo usan teléfonos `0981 000 …`: en esos, «Recordar» muestra el mensaje en pantalla en vez de abrir WhatsApp. El botón **Reiniciar datos de ejemplo** vuelve todo al principio.
 
+Esto es solo en modo demostración. Con la base de datos, el dueño carga datos de prueba desde el panel (ver **Datos de prueba**, en la sección 7).
+
 ## 7. Funcionalidades
 
 ### Sitio para clientes
@@ -331,7 +333,7 @@ Para que el panel se pueda mostrar sin esperar reservas reales, el sistema gener
 
 ![Galería de cortes](capturas/16-galeria.webp)
 
-**Reserva en tres pasos.** El cliente elige el servicio, después el día y la hora (solo se muestran los horarios libres), y por último deja sus datos. Al terminar recibe un comprobante con el código del turno.
+**Reserva en tres pasos.** El cliente elige el servicio, después el día y la hora (solo se muestran los horarios libres), y por último deja sus datos. No hay botones para pasar de un paso al otro: al tocar el servicio pasa solo a día y hora, y al tocar la hora pasa a sus datos, con el cursor ya en el nombre. El único botón es **Confirmar turno**. Para volver atrás se toca el paso de arriba («1 Servicio», «2 Día y hora»). Al terminar recibe un comprobante con el código del turno.
 
 Cuando trabaja más de un barbero, en el segundo paso aparece **¿Con quién?**: el cliente elige un barbero o «El que esté libre». Con un barbero elegido solo se ven sus días y horas; los días que no viene dicen «no atiende».
 
@@ -362,6 +364,8 @@ En el último paso, el nombre es el de quien viene a cortarse: un papá puede re
 Se entra en **/acceso-barberos** (https://tommy-barber.onrender.com/acceso-barberos) con usuario y contraseña. La página de los clientes no tiene botón para entrar. El dueño ve todo el panel; cada barbero ve Atender, Hoy y Turnos, solo con lo suyo. Cualquiera puede cambiar su contraseña con **Cambiar mi contraseña**, abajo del menú.
 
 ![Ingreso al panel con usuario y contraseña](capturas/35-panel-ingreso.webp)
+
+El dueño también es barbero: su cuenta está unida a su barbero, así entra con el mismo usuario y contraseña, ve todo el panel y en **Atender** arranca en su propia fila. En **Barberos** figura como «Dueño» y no se lo puede quitar.
 
 En modo demostración se entra con `#panel` y el PIN de prueba **2121**.
 
@@ -461,6 +465,15 @@ Con más de un barbero, **¿Para quién?** permite cerrar días u horas solo par
 Con la base de datos, en cada barbero está su **acceso al panel**: el dueño le da un usuario y una contraseña («Darle acceso al panel»), le pone una contraseña nueva si se la olvida o le quita el acceso. Al quitar a un barbero, su acceso se cierra solo.
 
 ![Barberos: acceso al panel de cada uno](capturas/36-barberos-acceso.webp)
+
+**Datos de prueba.** Abajo del menú del panel, el dueño tiene **Datos de prueba**, con dos botones:
+
+- **Cargar datos de prueba:** arma un mes de trabajo para probar el sistema: unos 70 clientes (algunos fijos, papás que reservan para sus hijos, uno que cambió de número y un número bloqueado por un turno falso), turnos de los últimos 30 días y de las próximas dos semanas (atendidos, que no vinieron, cancelados y clientes anotados en el local), los cobros, ventas de productos, compras, gastos del local y el stock, con algunos productos por debajo del mínimo. Usa los barberos, los servicios y el horario que ya están cargados y solo ocupa horas libres, así que no pisa turnos reales.
+- **Empezar de cero:** borra todos los turnos, los clientes, la caja y el stock (también los de prueba). Quedan los barberos con sus accesos, las fotos, los servicios con sus precios y el horario. Pide confirmación porque no se puede deshacer. Los clientes nuevos vuelven a empezar en el N.º 1.
+
+Los otros celulares con el panel abierto se actualizan solos.
+
+![Datos de prueba](capturas/37-datos-de-prueba.webp)
 
 **Clientes.** Cada cliente tiene su número interno (N.º) y se reconoce por su WhatsApp junto con su nombre y apellido. La lista se ordena por los que más vienen, los recientes o los que faltaron, y se busca por nombre, número actual o número anterior. La ficha de cada cliente muestra:
 

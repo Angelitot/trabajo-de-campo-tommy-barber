@@ -1131,6 +1131,13 @@
       (otros.length ? '<p class="rv-sub">Anteriores y cancelados</p><ul class="mt-lista">' + otros.map(function (t) { return itemMio(t, h); }).join('') + '</ul>' : '');
   }
 
+  // En «Tus datos», el cursor va directo al primer dato que falta (o al botón de confirmar)
+  function enfocarDatos() {
+    var n = document.getElementById('rv-nombre'), t = document.getElementById('rv-tel'), c = document.getElementById('rv-seguir');
+    var el = n && R.nombre.trim().length < 2 ? n : (t && !telInfo(R.tel).ok ? t : c);
+    if (el && !el.disabled) el.focus({ preventScroll: true });
+  }
+
   function renderReserva(focoPaso) {
     var caja = document.getElementById('reserva');
     var tira = caja.querySelector('.rv-dias');
@@ -1149,7 +1156,8 @@
     var cambiar = enMis
       ? '<button type="button" class="btn btn-linea btn-mini" data-accion="modo" data-modo="reservar" data-foco="modo">Reservar</button>'
       : '<button type="button" class="btn btn-linea btn-mini" data-accion="modo" data-modo="mis" data-foco="modo"' + (nMios ? ' aria-label="Mis turnos: ' + plural(nMios, 'turno próximo', 'turnos próximos') + '"' : '') + '>Mis turnos' + (nMios ? '<span class="contador" aria-hidden="true">' + nMios + '</span>' : '') + '</button>';
-    var mostrarPie = !enMis && v.paso < 4;
+    // El botón de abajo queda solo para confirmar: elegir el servicio y la hora ya pasa al paso siguiente
+    var mostrarPie = !enMis && (v.paso === 3 || (v.cambio && v.paso < 4));
     if (REMOTO && !SITIO.cargado) {
       caja.innerHTML = '<div class="rv"><div class="rv-cabeza"><div class="rv-titulo-fila"><span class="logo logo-44" aria-hidden="true"></span><h3 class="rv-titulo condensada">Reservar turno</h3></div></div>' +
         '<div class="rv-cuerpo">' + (SITIO.error
@@ -1160,7 +1168,7 @@
     }
     caja.innerHTML = '<div class="rv">' +
       '<div class="rv-cabeza"><div class="rv-titulo-fila"><span class="logo logo-44" aria-hidden="true"></span><h3 class="rv-titulo condensada">' + (enMis ? 'Mis turnos' : (enCambio ? 'Cambiar turno' : 'Reservar turno')) + '</h3>' + cambiar + '</div>' +
-      (mostrarPie && !enCambio ? '<ol class="rv-pasos" aria-label="Pasos de la reserva">' + pasos + '</ol>' : '') + '</div>' +
+      (!enMis && !enCambio && v.paso < 4 ? '<ol class="rv-pasos" aria-label="Pasos de la reserva">' + pasos + '</ol>' : '') + '</div>' +
       '<div class="rv-cuerpo">' + (enMis ? cuerpoMisTurnos() : cuerpoReservar(v)) + '</div>' +
       (mostrarPie ? '<div class="rv-pie"><p class="rv-resumen" id="rv-resumen" aria-live="polite">' + esc(v.resumen) + '</p><button type="button" class="btn btn-rojo" id="rv-seguir" data-accion="seguir" data-foco="seguir"' + (v.puede ? '' : ' disabled') + '>' + v.btnTxt + '</button></div>' : '') +
     '</div>';
@@ -1278,11 +1286,17 @@
       renderReserva(true);
     }
     else if (a === 'cambiar-volver') { R.cambiando = null; R.modo = 'mis'; R.aviso = ''; R.paso = 1; R.servicio = null; renderReserva(true); }
-    else if (a === 'servicio') { R.servicio = b.getAttribute('data-id'); R.hora = null; renderReserva(); }
+    else if (a === 'servicio') { R.servicio = b.getAttribute('data-id'); R.hora = null; R.aviso = ''; R.paso = 2; renderReserva(true); }
     else if (a === 'paso') { R.paso = +b.getAttribute('data-n'); R.aviso = ''; renderReserva(true); }
     else if (a === 'dia') { R.diaIdx = +b.getAttribute('data-k'); R.hora = null; R.aviso = ''; renderReserva(); }
     else if (a === 'barbero') { R.barbero = id || ''; R.hora = null; R.aviso = ''; renderReserva(); }
-    else if (a === 'hora') { R.diaIdx = +b.getAttribute('data-k'); R.hora = +b.getAttribute('data-m'); R.aviso = ''; renderReserva(); }
+    else if (a === 'hora') {
+      R.diaIdx = +b.getAttribute('data-k'); R.hora = +b.getAttribute('data-m'); R.aviso = '';
+      if (R.cambiando) { renderReserva(); return; }  // al cambiar un turno se confirma con el botón
+      R.paso = 3;
+      renderReserva(true);
+      enfocarDatos();
+    }
     else if (a === 'seguir') {
       var v = modeloReserva();
       if (!v.puede) return;
@@ -1560,6 +1574,7 @@
     repPeriodo: '3m',         // Reportes: período
     login: { usuario: '', error: '', enviando: false },  // con la base de datos: ingreso con usuario y contraseña
     miClave: null,            // { actual, nueva, repetir, error }: cambiar la contraseña propia
+    prueba: null,             // { confirmar, enviando }: datos de prueba y empezar de cero (solo el dueño)
     cuenta: null,             // Barberos: { barbero, modo: 'nueva' | 'clave', usuario, clave, error } cuenta para entrar al panel
     avisoCuenta: ''
   };
@@ -2415,7 +2430,8 @@
   function barberoAtender() {
     if (esBarbero()) return PANEL.yo.barbero;  // cada barbero ve su fila
     var act = barberosActivos();
-    if (!P.atBarbero) P.atBarbero = (leerJSON(CLAVE_ATENDER, {}) || {}).barbero || null;
+    // El dueño, que también es barbero, arranca en su propia fila
+    if (!P.atBarbero) P.atBarbero = (leerJSON(CLAVE_ATENDER, {}) || {}).barbero || (REMOTO && PANEL.yo ? PANEL.yo.barbero : null);
     if (!act.some(function (b) { return b.id === P.atBarbero; })) P.atBarbero = act[0].id;
     return P.atBarbero;
   }
@@ -2822,11 +2838,11 @@
       var pend = turnosPendientesBarbero(b.id).length;
       var atendidos = hist.filter(function (t) { return t.barbero === b.id && t.estado === 'atendido' && t.fecha >= desde30; }).length;
       var editando = P.bb && P.bb.id === b.id;
-      return '<li class="bb-item"><div class="bb-cab"><div><p class="bb-nombre" id="bb-n-' + esc(b.id) + '" tabindex="-1">' + esc(b.nombre) + '</p>' +
+      return '<li class="bb-item"><div class="bb-cab"><div><p class="bb-nombre" id="bb-n-' + esc(b.id) + '" tabindex="-1">' + esc(b.nombre) + (esDelDueno(b.id) ? ' <span class="bb-dueno">Dueño</span>' : '') + '</p>' +
           '<p class="bb-dias">' + esc(textoDias(b.dias)) + '</p>' +
           '<p class="suave bb-datos">' + plural(pend, 'turno pendiente', 'turnos pendientes') + ' · ' + plural(atendidos, 'cliente atendido', 'clientes atendidos') + ' en los últimos 30 días</p></div>' +
         '<div class="bb-botones"><button type="button" class="btn btn-linea btn-mini" data-accion="bb-editar" data-id="' + esc(b.id) + '" data-foco="bb-editar-' + esc(b.id) + '" aria-label="Editar a ' + esc(b.nombre) + '"' + (editando ? ' aria-expanded="true"' : '') + '>Editar</button>' +
-          (act.length > 1 ? '<button type="button" class="btn btn-linea btn-mini btn-peligro" data-accion="bb-quitar" data-id="' + esc(b.id) + '" data-foco="bb-quitar-' + esc(b.id) + '" aria-label="Quitar a ' + esc(b.nombre) + '">Quitar</button>' : '') +
+          (act.length > 1 && !esDelDueno(b.id) ? '<button type="button" class="btn btn-linea btn-mini btn-peligro" data-accion="bb-quitar" data-id="' + esc(b.id) + '" data-foco="bb-quitar-' + esc(b.id) + '" aria-label="Quitar a ' + esc(b.nombre) + '">Quitar</button>' : '') +
         '</div></div>' +
         (REMOTO ? plantillaCuenta(b) : '') +
         (editando ? plantillaFormBarbero() : '') +
@@ -3596,12 +3612,13 @@
       }).join('');
       var plantillas = { atender: plantillaAtender, hoy: plantillaHoy, turnos: plantillaTurnos, caja: plantillaCaja, stock: plantillaStock, precios: plantillaPrecios,
         horario: plantillaHorario, barberos: plantillaBarberos, clientes: plantillaClientes, reportes: plantillaReportes, fotos: plantillaFotos };
-      var cuerpo = (P.miClave ? plantillaMiClave() : '') + avisoConexion() + (plantillas[P.vista] || plantillaHoy)(h);
+      var cuerpo = (P.miClave ? plantillaMiClave() : '') + (P.prueba ? plantillaPrueba() : '') + avisoConexion() + (plantillas[P.vista] || plantillaHoy)(h);
       cont.innerHTML = '<div class="pa">' +
         '<aside class="pa-aside"><div class="pa-marca"><span class="logo logo-56" aria-hidden="true"></span><div><p class="pa-marca-nombre condensada">Tommy Barber</p><p class="pa-marca-sub">' + (esBarbero() ? 'Panel de ' + esc(PANEL.yo.nombre) : 'Panel del dueño') + '</p></div></div>' +
           '<nav class="pa-nav" aria-label="Secciones del panel">' + nav + '</nav>' +
           '<div class="pa-aside-pie"><a href="' + (REMOTO ? '/' : '#inicio') + '">Ver el sitio</a><button type="button" data-accion="salir">Salir</button>' +
-            (REMOTO ? '<button type="button" data-accion="mi-clave" data-foco="mi-clave">Cambiar mi contraseña</button>' : P.reiniciando
+            (REMOTO ? '<button type="button" data-accion="mi-clave" data-foco="mi-clave">Cambiar mi contraseña</button>' +
+              (esBarbero() ? '' : '<button type="button" data-accion="prueba-abrir" data-foco="prueba-abrir">Datos de prueba</button>') : P.reiniciando
               ? '<div class="pa-reinicio" role="group" aria-labelledby="pa-reinicio-t"><p id="pa-reinicio-t">Vuelven los datos de ejemplo de la agenda, la caja y el stock, y se deshacen los cambios de número, las fichas unidas y los números bloqueados. Los servicios, los barberos, las fotos, los cambios de horario y los turnos reservados en el sitio no se tocan.</p>' +
                 '<div class="pa-reinicio-botones"><button type="button" class="btn btn-claro btn-mini" data-accion="reiniciar-si" data-foco="reiniciar-si">Reiniciar</button><button type="button" data-accion="reiniciar-no" data-foco="reiniciar">Cancelar</button></div></div>'
               : '<button type="button" data-accion="reiniciar" data-foco="reiniciar">Reiniciar datos de ejemplo</button>') +
@@ -3784,6 +3801,12 @@
       return;
     }
     if (a === 'salir' && REMOTO) { salirDelPanel(); return; }
+    if (a === 'prueba-abrir') { P.prueba = P.prueba ? null : { confirmar: false, enviando: '' }; renderPanel(P.prueba ? 'pb-t' : 'prueba-abrir'); return; }
+    if (a === 'prueba-cerrar') { P.prueba = null; renderPanel('prueba-abrir'); return; }
+    if (a === 'prueba-cargar') { cargarPrueba(); return; }
+    if (a === 'prueba-borrar') { P.prueba.confirmar = true; renderPanel('pb-borrar-no'); return; }
+    if (a === 'prueba-borrar-no') { P.prueba.confirmar = false; renderPanel('prueba-borrar'); return; }
+    if (a === 'prueba-borrar-si') { borrarTodo(); return; }
     if (a === 'aviso-cerrar') { PANEL.aviso = ''; renderPanel('pa-titulo'); return; }
     if (a === 'mi-clave') { P.miClave = P.miClave ? null : { actual: '', nueva: '', repetir: '', error: '' }; renderPanel(P.miClave ? 'mc-actual' : 'mi-clave'); return; }
     if (a === 'mi-clave-cancelar') { P.miClave = null; renderPanel('mi-clave'); return; }
@@ -4145,6 +4168,8 @@
   // y se manda solo lo que cambió. Los pedidos van de a uno y en orden (COLA).
   var VISTAS_BARBERO = ['atender', 'hoy', 'turnos'];
   function esBarbero() { return REMOTO && !!PANEL.yo && PANEL.yo.rol === 'barbero'; }
+  // El barbero que es el dueño (no se puede quitar)
+  function esDelDueno(id) { return REMOTO && !!PANEL.yo && PANEL.yo.rol === 'dueno' && PANEL.yo.barbero === id; }
   var CAMPOS_TURNO = ['servicio', 'fecha', 'min', 'cliente', 'tel', 'nota', 'precio', 'dur', 'estado', 'medio', 'canceladoPor', 'canceladoEn', 'recordadoEn',
     'avisadoEn', 'orden', 'sinTurno', 'llego', 'llamadoEn', 'enLocal', 'antes', 'cambiadoEn', 'barbero', 'pospuesto', 'falso'];
   var CAMPOS_PRODUCTO = ['nombre', 'presentacion', 'uni', 'stock', 'minimo', 'precio'];
@@ -4256,28 +4281,46 @@
       return { id: 'ocupado-' + i, codigo: '', servicio: '', fecha: o.fecha, min: o.min, dur: o.dur, barbero: o.barbero, estado: 'confirmado', cliente: '', tel: '', ejemplo: false };
     });
   }
-  function cargarMisTurnos() {
+  // Mis turnos: el pedido sale ya mismo; los turnos se arman cuando están los servicios (aplicarMisTurnos)
+  function pedirMisTurnos() {
     var l = misClaves();
-    if (!l.length) { misReservas = []; armarOcupacion(); return Promise.resolve(); }
-    return pedir('POST', '/api/reservas/consultar', { items: l.slice(-100) }).then(function (d) {
-      var desde = sumarDias(ahoraPY().clave, -30);
-      misReservas = d.turnos.map(normalizarTurno).filter(function (t) { return t && t.fecha >= desde; });
-      var quedan = {};
-      misReservas.forEach(function (t) { quedan[t.codigo] = true; });
-      guardarJSON(CLAVE_MIS, l.filter(function (x) { return quedan[x.codigo]; }));
-      armarOcupacion();
-    });
+    if (!l.length) return Promise.resolve(null);
+    return pedir('POST', '/api/reservas/consultar', { items: l.slice(-100) }).then(function (d) { return { l: l, turnos: d.turnos }; });
+  }
+  function aplicarMisTurnos(r) {
+    if (!r) { misReservas = []; armarOcupacion(); return; }
+    var desde = sumarDias(ahoraPY().clave, -30);
+    misReservas = r.turnos.map(normalizarTurno).filter(function (t) { return t && t.fecha >= desde; });
+    var quedan = {};
+    misReservas.forEach(function (t) { quedan[t.codigo] = true; });
+    guardarJSON(CLAVE_MIS, r.l.filter(function (x) { return quedan[x.codigo]; }));
+    armarOcupacion();
+  }
+  function cargarMisTurnos() { return pedirMisTurnos().then(aplicarMisTurnos); }
+
+  // Lo último que se recibió del sitio queda guardado en el celular: la próxima vez la página
+  // muestra precios y horarios al instante y los actualiza apenas responde el servidor.
+  var CLAVE_SITIO = 'tommybarber-sitio';
+  function aplicarSitio(d) {
+    aplicarConfig(d);
+    aplicarFotosServidor(d.fotos);
+    OCUPACION = d.ocupacion || [];
+    armarOcupacion();
+    SITIO.cargado = true; SITIO.error = false;
+  }
+  function sitioGuardado() {
+    var g = leerJSON(CLAVE_SITIO, null);
+    if (!g || !g.d || !g.en || Date.now() - g.en > 86400000 || !Array.isArray(g.d.servicios) || !g.d.servicios.length) return;
+    try { aplicarSitio(g.d); } catch (e) { SITIO.cargado = false; }
   }
   function cargarSitio() {
     if (PANEL.listo) return Promise.resolve();
+    var mis = pedirMisTurnos().catch(function () { return undefined; });   // a la vez que el sitio
     return pedir('GET', '/api/sitio').then(function (d) {
       if (PANEL.listo) return;  // el panel ya trajo sus datos
-      aplicarConfig(d);
-      aplicarFotosServidor(d.fotos);
-      OCUPACION = d.ocupacion || [];
-      armarOcupacion();
-      SITIO.cargado = true; SITIO.error = false;
-      return cargarMisTurnos().catch(function () { /* Mis turnos se vuelve a pedir en la próxima carga */ });
+      aplicarSitio(d);
+      guardarJSON(CLAVE_SITIO, { en: Date.now(), d: d });
+      return mis.then(function (r) { if (r !== undefined && !PANEL.listo) aplicarMisTurnos(r); });
     }).catch(function () {
       if (!SITIO.cargado) SITIO.error = true;
     }).then(function () {
@@ -4419,7 +4462,7 @@
     PANEL.desde = d.ahora;
     tomarSnap();
   }
-  function cargarPanel(mensaje) {
+  function cargarPanel(mensaje, esBueno) {
     PANEL.cargando = !PANEL.listo;
     if (PANEL.cargando) renderPanelSiVisible();
     return pedir('GET', '/api/panel/datos').then(function (d) {
@@ -4427,7 +4470,7 @@
       PANEL.yo = d.yo;
       aplicarDatosPanel(d);
       PANEL.listo = true; PANEL.cargando = false;
-      if (mensaje) avisar(mensaje, true);
+      if (mensaje) avisar(mensaje, !esBueno);
       redibujarSitio();
       if (primera) {
         P.acceso = true;
@@ -4473,7 +4516,7 @@
     guardarTexto(CLAVE_SESION, '');
     PANEL.listo = false; PANEL.yo = null; PANEL.snap = null; PANEL.cuentas = null; PANEL.aviso = '';
     COLA.trabajos = [];
-    P.acceso = false; P.miClave = null; P.cuenta = null; P.login = { usuario: '', error: '', enviando: false };
+    P.acceso = false; P.miClave = null; P.cuenta = null; P.prueba = null; P.login = { usuario: '', error: '', enviando: false };
     D = cargarDatos();
     CLI = registroVacio();
     armarOcupacion();
@@ -4625,6 +4668,10 @@
     });
   }
   function aplicarNovedades(n) {
+    if (n.versiones && PANEL.vers.datos != null && n.versiones.datos !== PANEL.vers.datos) {
+      cargarPanel('Se cargaron datos de prueba o se empezó de cero desde otro celular: el panel se actualizó.', true);
+      return;
+    }
     var S = PANEL.snap, cambio = false, sitio = false;
     var locales = {};
     D.turnos.forEach(function (t) { locales[t.id] = t; });
@@ -4756,6 +4803,9 @@
   function plantillaCuenta(b) {
     if (!PANEL.cuentas) return '<p class="suave bb-acceso-t">Cargando el acceso al panel…</p>';
     var c = cuentaDe(b.id);
+    if (c && c.rol === 'dueno') {
+      return '<div class="bb-acceso"><p class="bb-acceso-t">Es el dueño: entra al panel con el usuario <strong>' + esc(c.usuario) + '</strong> y ve todo. Su contraseña se cambia en «Cambiar mi contraseña».</p></div>';
+    }
     var f = P.cuenta && P.cuenta.barbero === b.id ? P.cuenta : null;
     var html = '<div class="bb-acceso"><p class="bb-acceso-t">' + (c
       ? 'Entra al panel con el usuario <strong>' + esc(c.usuario) + '</strong>' + (c.ultimoIngreso ? '. Último ingreso: ' + esc(cuandoFue(c.ultimoIngreso)) : '. Todavía no entró') + '.'
@@ -4862,6 +4912,56 @@
     });
   }
 
+  /* ----- Panel: datos de prueba y empezar de cero ----- */
+  function plantillaPrueba() {
+    var f = P.prueba, ocupado = !!f.enviando;
+    return '<section class="tarjeta-form prueba" aria-labelledby="pb-t"><h2 class="pa-h3" id="pb-t" tabindex="-1">Datos de prueba</h2>' +
+      '<p>Carga un mes de trabajo para probar el sistema: clientes, turnos de los últimos 30 días y de las próximas dos semanas, cobros, ventas, compras, gastos y stock. ' +
+        'Usa los barberos, los servicios y el horario que ya están cargados, y solo ocupa horas libres.</p>' +
+      '<div class="prod-form-acciones"><button type="button" class="btn btn-negro btn-mini" data-accion="prueba-cargar" data-foco="prueba-cargar"' + (ocupado ? ' disabled' : '') + '>' +
+        (f.enviando === 'cargar' ? 'Cargando…' : 'Cargar datos de prueba') + '</button></div>' +
+      '<h3 class="pa-h3 prueba-cero">Empezar de cero</h3>' +
+      '<p>Borra todos los turnos, los clientes, la caja y el stock (también los de prueba). Quedan los barberos y sus accesos, las fotos, los servicios con sus precios y el horario.</p>' +
+      (f.confirmar
+        ? '<div class="bb-quitar" role="group" aria-labelledby="pb-q-t"><p id="pb-q-t"><strong>¿Borrar todo y empezar de cero?</strong> No se puede deshacer.</p>' +
+          '<div class="prod-form-acciones"><button type="button" class="btn btn-rojo btn-mini" data-accion="prueba-borrar-si" data-foco="pb-borrar-si"' + (ocupado ? ' disabled' : '') + '>' +
+            (f.enviando === 'borrar' ? 'Borrando…' : 'Sí, borrar todo') + '</button>' +
+          '<button type="button" class="link-btn" data-accion="prueba-borrar-no" data-foco="pb-borrar-no">No</button></div></div>'
+        : '<div class="prod-form-acciones"><button type="button" class="btn btn-linea btn-mini btn-peligro" data-accion="prueba-borrar" data-foco="prueba-borrar"' + (ocupado ? ' disabled' : '') + '>Empezar de cero</button>' +
+          '<button type="button" class="link-btn" data-accion="prueba-cerrar">Cerrar</button></div>') +
+    '</section>';
+  }
+  // Primero salen los cambios pendientes; después el pedido; al final se vuelve a cargar todo el panel
+  function pedidoDePrueba(que, ruta, cuerpo, listo) {
+    if (!P.prueba || P.prueba.enviando) return;
+    P.prueba.enviando = que;
+    renderPanel(que === 'cargar' ? 'prueba-cargar' : 'pb-borrar-si');
+    sincronizarYa();
+    encolar(function () {
+      return pedir('POST', ruta, cuerpo).then(function (r) {
+        P.prueba = null;
+        return cargarPanel(listo(r), true);
+      }, function (e) {
+        if (e.estado === 401) { sesionVencida('La sesión se cerró. Ingresá de nuevo.'); return; }
+        if (P.prueba) { P.prueba.enviando = ''; P.prueba.confirmar = false; }
+        avisar(mensajeDe(e, 'No se pudo hacer. Probá de nuevo.'), true);
+        renderPanelSeguro();
+      });
+    });
+  }
+  function cargarPrueba() {
+    pedidoDePrueba('cargar', '/api/panel/prueba', {}, function (r) {
+      var x = r.resumen || {};
+      return 'Se cargaron los datos de prueba: ' + plural(x.turnos || 0, 'turno', 'turnos') + ', ' + plural(x.clientes || 0, 'cliente', 'clientes') + ' y ' +
+        plural(x.caja || 0, 'movimiento de caja', 'movimientos de caja') + '.';
+    });
+  }
+  function borrarTodo() {
+    pedidoDePrueba('borrar', '/api/panel/empezar-de-cero', { confirmar: 'BORRAR' }, function () {
+      return 'Listo: se borraron los turnos, los clientes, la caja y el stock. El sistema quedó en cero.';
+    });
+  }
+
   function iniciarRemoto() {
     panelEl.addEventListener('submit', function (e) {
       var f = e.target;
@@ -4870,8 +4970,12 @@
       else if (f.id === 'pa-mi-clave') cambiarMiClave();
       else if (f.getAttribute('data-form') === 'cuenta') guardarCuenta();
     });
-    cargarSitio();
     if (esRutaPanel() && TOKEN) cargarPanel();
+    else {
+      sitioGuardado();
+      if (SITIO.cargado) redibujarSitio();
+      cargarSitio();
+    }
     setInterval(function () { if (PANEL.listo) buscarNovedades(); }, 15000);
     setInterval(function () { if (!PANEL.listo && !R.enviando) cargarSitio(); }, 120000);
     document.addEventListener('visibilitychange', function () {

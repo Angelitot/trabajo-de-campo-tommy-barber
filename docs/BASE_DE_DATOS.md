@@ -5,6 +5,7 @@ La base de datos es **PostgreSQL** y está en **Aiven**. Se diseñó a partir de
 - **Esquema:** [`base-de-datos/01-esquema.sql`](../base-de-datos/01-esquema.sql), con 17 tablas, 4 vistas y las reglas del negocio como restricciones.
 - **Datos iniciales:** [`base-de-datos/02-datos-iniciales.sql`](../base-de-datos/02-datos-iniciales.sql), con el horario del local, el primer barbero y los 13 servicios con sus precios. No trae clientes, turnos ni datos de ejemplo.
 - **Lo que agrega la API:** [`base-de-datos/03-api.sql`](../base-de-datos/03-api.sql), con las sesiones del panel, las formas de reconocer a cada cliente, los identificadores que da el panel y las versiones de cada parte. Lo aplica la API sola al arrancar (ver [Cómo se creó](#cómo-se-creó)).
+- **El dueño como barbero:** [`base-de-datos/04-dueno-y-datos.sql`](../base-de-datos/04-dueno-y-datos.sql) une la cuenta del dueño con su barbero (el primero) y suma la versión «datos», que sube cuando se cargan datos de prueba o se empieza de cero. También lo aplica la API al arrancar.
 - **Pruebas:** [`pruebas/probar_base_de_datos.py`](../pruebas/probar_base_de_datos.py).
 
 ## Convenciones
@@ -210,7 +211,7 @@ erDiagram
 | `cliente_alias` | Las formas de reconocer a un cliente: WhatsApp + nombre (o solo el nombre, o solo el número). Un cliente puede tener varias: si cambió de número o si se unieron dos fichas. Es lo que en el prototipo era el índice de clientes |
 | `sesion` | Cada ingreso al panel: el hash del token, cuándo vence y el último uso |
 | `turno_borrado` | Clientes sin turno anotados en el local que se deshicieron (para que los otros celulares los saquen) |
-| `version_datos` | Un número por parte (configuración, fichas, stock) que sube con cada cambio: así el panel sabe qué volver a pedir |
+| `version_datos` | Un número por parte (configuración, fichas, stock y, desde `04`, «datos») que sube con cada cambio: así el panel sabe qué volver a pedir |
 | `ajuste` | Ajustes sueltos del sitio (por ejemplo, si el dueño armó su propia galería) |
 | `ref` en caja, stock, horario y fotos | El identificador que le da el panel a cada movimiento o cambio, para no guardarlo dos veces |
 | `turno.clave_cliente` | El hash de la clave con que el cliente ve, cambia y cancela su turno desde su celular |
@@ -251,7 +252,7 @@ Lo que depende del momento (que el horario esté libre según el horario de cada
 1. Se escribió el esquema a partir de los datos que guarda el prototipo (los de la [sección 6 de la documentación](DOCUMENTACION.md#datos-que-guarda)).
 2. Se probó en un PostgreSQL local con `pruebas/probar_base_de_datos.py`.
 3. Se creó en Aiven sentencia por sentencia, con los mismos archivos, y se comprobó que quedaran las mismas tablas, vistas, índices y restricciones que en la prueba local, y que rechazara los datos inválidos.
-4. `03-api.sql` lo aplica la API al arrancar (`servidor/migraciones.js`): anota en la tabla `migracion` qué archivos ya se aplicaron y aplica los que falten, en orden y dentro de una transacción. En una base nueva aplica los tres.
+4. `03-api.sql` y `04-dueno-y-datos.sql` los aplica la API al arrancar (`servidor/migraciones.js`): anota en la tabla `migracion` qué archivos ya se aplicaron y aplica los que falten, en orden y dentro de una transacción. En una base nueva aplica todos.
 
 Para crearla en otra base PostgreSQL (versión 15 o más nueva):
 
@@ -259,6 +260,7 @@ Para crearla en otra base PostgreSQL (versión 15 o más nueva):
 psql "DIRECCION_DE_LA_BASE" -f base-de-datos/01-esquema.sql
 psql "DIRECCION_DE_LA_BASE" -f base-de-datos/02-datos-iniciales.sql
 psql "DIRECCION_DE_LA_BASE" -f base-de-datos/03-api.sql
+psql "DIRECCION_DE_LA_BASE" -f base-de-datos/04-dueno-y-datos.sql
 ```
 
 O, más simple, arrancar la API con esa base: aplica lo que falte.

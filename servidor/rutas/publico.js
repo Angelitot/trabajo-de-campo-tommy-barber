@@ -5,10 +5,11 @@ import { z } from 'zod';
 import { enTransaccion } from '../db.js';
 import { ANTICIPACION, DIAS_ADELANTE, PASO, aMin, crearAgenda, empezo, hhmm, momentoPY, nombreNorm, sumarDias, telInfo } from '../agenda.js';
 import {
-  COLUMNAS_TURNO, ErrorApi, cargarBarberos, cargarBloqueos, cargarFotos, cargarHoras, cargarServicios, conflicto, filaATurno, idBarbero, invalido,
+  COLUMNAS_TURNO, ErrorApi, conflicto, filaATurno, idBarbero, invalido,
   resolverCliente, zFecha, zMin
 } from '../datos.js';
 import { nuevoCodigo, nuevoToken, sha256 } from '../seguridad.js';
+import { config, recordar, versionConfig } from '../cache.js';
 
 export const MAX_POR_NUMERO = 4, MAX_POR_CELULAR = 4;
 
@@ -28,16 +29,15 @@ const zReserva = z.object({
 // Candado por día: dos reservas para el mismo día se revisan de a una
 export async function bloquearDia(c, fecha) { await c.query('SELECT pg_advisory_xact_lock(727002, hashtext($1))', [fecha]); }
 
-// Todo lo que hace falta para saber qué horas están libres un día
-export async function agendaDelDia(c, fecha, sinTurno) {
-  const horas = await cargarHoras(c);
-  const barberos = await cargarBarberos(c);
-  const bloqueos = await cargarBloqueos(c, fecha);
+// Todo lo que hace falta para saber qué horas están libres un día.
+// El horario, los barberos y los servicios salen de lo guardado en memoria si la versión de la base es la misma.
+export async function agendaDelDia(c, pool, fecha, sinTurno) {
+  const cfg = await config(pool, await versionConfig(c));
   const { rows } = await c.query("SELECT codigo, fecha, hora, duracion_min, estado, barbero_id FROM turno WHERE fecha = $1 AND estado <> 'cancelado' AND codigo <> $2",
     [fecha, sinTurno || '']);
-  const turnos = rows.map((r) => ({ id: r.codigo, fecha: r.fecha, min: aMin(r.hora), dur: r.duracion_min, estado: r.estado, barbero: 'b' + r.barbero_id }));
-  return { agenda: crearAgenda(horas, bloqueos), barberos, turnos };
+  return { agenda: crearAgenda(cfg.horas, cfg.bloqueos), barberos: cfg.barberos, servicios: cfg.servicios, turnos: rows.map(filaAgenda) };
 }
+const filaAgenda = (r) => ({ id: r.codigo, fecha: r.fecha, min: aMin(r.hora), dur: r.duracion_min, estado: r.estado, barbero: 'b' + r.barbero_id });
 
 // El barbero que toma ese horario (como lo ofrece la página), o un error si el horario no se puede dar
 export function barberoParaHorario({ agenda, barberos, turnos }, { fecha, m, dur, barbero, ahora }) {
@@ -69,20 +69,26 @@ export function rutasPublicas(ctx) {
   const limiteConsultas = limite(120, 15 * 60000);
 
   // Servicios, barberos, cambios de horario, fotos y horarios ocupados de los próximos 14 días (sin datos de los clientes)
+  // Queda armado en memoria hasta que algo se guarda (o 30 segundos): así responde al instante
   r.get('/sitio', async (req, res) => {
     const c = ctx.pool;
     const h = momentoPY();
-    const { rows } = await c.query(
-      "SELECT fecha, hora, duracion_min, barbero_id FROM turno WHERE fecha BETWEEN $1 AND $2 AND estado <> 'cancelado' ORDER BY fecha, hora",
-      [h.clave, sumarDias(h.clave, DIAS_ADELANTE)]);
-    res.json({
-      ahora: Date.now(),
-      servicios: (await cargarServicios(c)).map(({ original, ...s }) => s),
-      barberos: (await cargarBarberos(c)).map(({ id, nombre, activo, dias }) => ({ id, nombre, activo, dias })),
-      bloqueos: (await cargarBloqueos(c)).map(({ creadoEn, ...b }) => b),
-      fotos: await cargarFotos(c, base(req)),
-      ocupacion: rows.map((t) => ({ fecha: t.fecha, min: aMin(t.hora), dur: t.duracion_min, barbero: 'b' + t.barbero_id }))
+    const b = base(req);
+    const sitio = await recordar('sitio|' + h.clave + '|' + b, async () => {
+      const [cfg, ocupados] = await Promise.all([
+        versionConfig(c).then((v) => config(c, v, b)),
+        c.query("SELECT fecha, hora, duracion_min, barbero_id FROM turno WHERE fecha BETWEEN $1 AND $2 AND estado <> 'cancelado' ORDER BY fecha, hora",
+          [h.clave, sumarDias(h.clave, DIAS_ADELANTE)])
+      ]);
+      return JSON.stringify({
+        servicios: cfg.servicios.map(({ original, ...s }) => s),
+        barberos: cfg.barberos.map(({ id, nombre, activo, dias }) => ({ id, nombre, activo, dias })),
+        bloqueos: cfg.bloqueos.map(({ creadoEn, ...x }) => x),
+        fotos: cfg.fotos,
+        ocupacion: ocupados.rows.map((t) => ({ fecha: t.fecha, min: aMin(t.hora), dur: t.duracion_min, barbero: 'b' + t.barbero_id }))
+      });
     });
+    res.type('application/json').send(sitio);
   });
 
   // Una foto del sitio. La dirección lleva la versión, así el navegador la guarda mucho tiempo.
@@ -102,16 +108,21 @@ export function rutasPublicas(ctx) {
     const resultado = await enTransaccion(ctx.pool, async (c) => {
       await bloquearDia(c, d.fecha);
       const h = momentoPY();
-      const serv = (await c.query('SELECT id, nombre, precio, duracion_min FROM servicio WHERE id = $1 AND activo', [d.servicio])).rows[0];
+      const cfg = await config(ctx.pool, await versionConfig(c));
+      const serv = cfg.servicios.find((s) => s.id === d.servicio && s.activo);
       if (!serv) throw conflicto('Ese servicio ya no se ofrece. Elegí otro.', { error: 'servicio' });
-      if ((await c.query('SELECT 1 FROM numero_bloqueado WHERE telefono = $1', [tel.wa])).rows.length) {
-        throw new ErrorApi(403, 'bloqueado', 'Este número no puede reservar por la web.');
-      }
+      // En una sola consulta: si el número está bloqueado, sus turnos pendientes y los turnos de ese día
+      const q = (await c.query(
+        `SELECT EXISTS (SELECT 1 FROM numero_bloqueado WHERE telefono = $1) AS bloqueado,
+           (SELECT coalesce(json_agg(json_build_object('nombre_cliente', nombre_cliente, 'fecha', fecha, 'hora', hora, 'telefono', telefono, 'dispositivo', dispositivo)), '[]')
+              FROM turno WHERE estado = 'confirmado' AND (telefono = $1 OR ($2::text IS NOT NULL AND dispositivo = $2))
+               AND (fecha > $3 OR (fecha = $3 AND hora > $4::time))) AS pendientes,
+           (SELECT coalesce(json_agg(json_build_object('codigo', codigo, 'fecha', fecha, 'hora', hora, 'duracion_min', duracion_min, 'estado', estado, 'barbero_id', barbero_id)), '[]')
+              FROM turno WHERE fecha = $5 AND estado <> 'cancelado') AS dia`,
+        [tel.wa, d.dispositivo || null, h.clave, hhmm(h.min), d.fecha])).rows[0];
+      if (q.bloqueado) throw new ErrorApi(403, 'bloqueado', 'Este número no puede reservar por la web.');
       // Tope contra turnos falsos: una persona tiene un turno pendiente a la vez; un número, hasta 4; un celular, hasta 4
-      const pendientes = (await c.query(
-        `SELECT nombre_cliente, fecha, hora, telefono, dispositivo FROM turno
-         WHERE estado = 'confirmado' AND (telefono = $1 OR ($2::text IS NOT NULL AND dispositivo = $2))
-           AND (fecha > $3 OR (fecha = $3 AND hora > $4::time))`, [tel.wa, d.dispositivo || null, h.clave, hhmm(h.min)])).rows;
+      const pendientes = q.pendientes;
       const mismoNumero = pendientes.filter((t) => t.telefono === tel.wa);
       const n = nombreNorm(d.nombre);
       const persona = n && mismoNumero.find((t) => nombreNorm(t.nombre_cliente) === n);
@@ -120,18 +131,16 @@ export function rutasPublicas(ctx) {
       const delCelular = d.dispositivo ? pendientes.filter((t) => t.dispositivo === d.dispositivo).length : 0;
       if (delCelular >= MAX_POR_CELULAR) throw conflicto('Desde este celular ya hay muchos turnos pendientes.', { error: 'tope-celular', cantidad: delCelular });
 
-      const dia = await agendaDelDia(c, d.fecha);
-      const b = barberoParaHorario(dia, { fecha: d.fecha, m: d.min, dur: serv.duracion_min, barbero: d.barbero, ahora: h });
+      const dia = { agenda: crearAgenda(cfg.horas, cfg.bloqueos), barberos: cfg.barberos, turnos: q.dia.map(filaAgenda) };
+      const b = barberoParaHorario(dia, { fecha: d.fecha, m: d.min, dur: serv.min, barbero: d.barbero, ahora: h });
       const clienteId = await resolverCliente(c, d.nombre, tel.wa);
       const clave = nuevoToken();
       for (let intento = 0; intento < 5; intento++) {
-        const codigo = nuevoCodigo();
-        if ((await c.query('SELECT 1 FROM turno WHERE codigo = $1', [codigo])).rows.length) continue;
         const { rows } = await c.query(
           `INSERT INTO turno (codigo, cliente_id, nombre_cliente, telefono, barbero_id, servicio_id, fecha, hora, duracion_min, precio, nota, dispositivo, clave_cliente)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING ${COLUMNAS_TURNO}`,
-          [codigo, clienteId, d.nombre, tel.wa, idBarbero(b.id), serv.id, d.fecha, hhmm(d.min), serv.duracion_min, serv.precio, d.nota || null, d.dispositivo || null, sha256(clave)]);
-        return { turno: filaATurno(rows[0]), clave };
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT (codigo) DO NOTHING RETURNING ${COLUMNAS_TURNO}`,
+          [nuevoCodigo(), clienteId, d.nombre, tel.wa, idBarbero(b.id), serv.id, d.fecha, hhmm(d.min), serv.min, serv.precio, d.nota || null, d.dispositivo || null, sha256(clave)]);
+        if (rows.length) return { turno: filaATurno(rows[0]), clave };
       }
       throw new Error('No se pudo generar un código de turno');
     });
@@ -176,7 +185,7 @@ export function rutasPublicas(ctx) {
       const antes = await turnoConClave(c, codigo, d.clave);
       for (const f of [antes.fecha, d.fecha].sort()) await bloquearDia(c, f);
       if (antes.fecha === d.fecha && antes.min === d.min) throw conflicto('Es el mismo horario que ya tenés.', { error: 'mismo' });
-      const dia = await agendaDelDia(c, d.fecha, codigo);
+      const dia = await agendaDelDia(c, ctx.pool, d.fecha, codigo);
       const b = barberoParaHorario(dia, { fecha: d.fecha, m: d.min, dur: antes.dur, barbero: d.barbero });
       const { rows } = await c.query(
         `UPDATE turno SET fecha_anterior = fecha, hora_anterior = hora, fecha = $2, hora = $3, barbero_id = $4, cambiado_en = now(), recordado_en = NULL,

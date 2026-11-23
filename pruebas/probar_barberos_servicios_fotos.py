@@ -54,12 +54,10 @@ async def reservar(pg, servicio, barbero, k, m, nombre, tel):
     await pg.reload()  # empieza la reserva de cero
     await pg.wait_for_timeout(150)
     await pg.click(f'.rv-servicio[data-id="{servicio}"]')
-    await pg.click('#reserva [data-accion="seguir"]')
     if barbero is not None:
         await pg.click(f'[data-accion="barbero"][data-id="{barbero}"]')
     await pg.click(f'[data-accion="dia"][data-k="{k}"]')
     await pg.click(f'[data-accion="hora"][data-k="{k}"][data-m="{m}"]')
-    await pg.click('#reserva [data-accion="seguir"]')
     await pg.fill('#rv-nombre', nombre)
     await pg.fill('#rv-tel', tel)
     boton = pg.locator('#reserva [data-accion="seguir"]')
@@ -112,7 +110,6 @@ async def recorrido(b):
     await pg.goto(URL + '#reservar')
     await pg.wait_for_timeout(150)
     await pg.click('.rv-servicio[data-id="corte"]')
-    await pg.click('#reserva [data-accion="seguir"]')
     chips = await pg.locator('[data-accion="barbero"]').all_inner_texts()
     check(chips == ['El que esté libre', 'Barbero 1', 'Barbero 2'], f'el cliente elige con quién: {chips}')
     await pg.click('[data-accion="barbero"][data-id="b2"]')

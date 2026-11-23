@@ -447,3 +447,87 @@ describe('panel', () => {
     assert.equal((await api('GET', '/api/acceso/yo', undefined, tokenDueno)).estado, 401);
   });
 });
+
+describe('dueño, datos de prueba y empezar de cero', () => {
+  let token;
+
+  test('el dueño también es el barbero principal y no se puede quitar', async () => {
+    const r = await api('POST', '/api/acceso/ingresar', { usuario: 'tommy', clave: 'Peine.Rojo.2027' });
+    assert.equal(r.estado, 200);
+    token = r.datos.token;
+    assert.equal(r.datos.yo.rol, 'dueno');
+    assert.equal(r.datos.yo.barbero, 'b1');
+    const d = (await api('GET', '/api/panel/datos', undefined, token)).datos;
+    const b1 = d.config.barberos.find((b) => b.id === 'b1');
+    const no = await api('POST', '/api/panel/cambios', { barberos: { cambiados: [{ ...b1, activo: false }] } }, token);
+    assert.equal(no.estado, 400);
+    assert.match(no.datos.mensaje, /dueño/);
+    const cuentas = (await api('GET', '/api/panel/cuentas', undefined, token)).datos.cuentas;
+    assert.ok(cuentas.some((c) => c.rol === 'dueno' && c.barbero === 'b1'));
+    // A su barbero no se le puede crear otra cuenta
+    assert.equal((await api('POST', '/api/panel/cuentas', { barbero: 'b1', usuario: 'otro.tommy', clave: 'Tijera.Fina.88' }, token)).estado, 409);
+  });
+
+  test('un barbero no puede cargar datos de prueba ni borrar todo', async () => {
+    const d = (await api('GET', '/api/panel/datos', undefined, token)).datos;
+    const b3 = { id: 'xb3', nombre: 'Barbero 3', activo: true, dias: { 1: [480, 1050], 2: [480, 1050], 3: [480, 1050], 4: [480, 1050], 5: [480, 1050], 6: [480, 1050] } };
+    const r = await api('POST', '/api/panel/cambios', { barberos: { nuevos: [b3] } }, token);
+    assert.equal(r.estado, 200, JSON.stringify(r.datos));
+    await api('POST', '/api/panel/cuentas', { barbero: r.datos.ids.xb3, usuario: 'barbero3', clave: 'Peine.Verde.33' }, token);
+    const tb = (await api('POST', '/api/acceso/ingresar', { usuario: 'barbero3', clave: 'Peine.Verde.33' })).datos.token;
+    assert.equal((await api('POST', '/api/panel/prueba', {}, tb)).estado, 403);
+    assert.equal((await api('POST', '/api/panel/empezar-de-cero', { confirmar: 'BORRAR' }, tb)).estado, 403);
+    assert.ok(d.turnos.length > 0);
+  });
+
+  test('cargar datos de prueba: un mes de turnos, clientes, caja y stock', async () => {
+    const antes = (await api('GET', '/api/panel/datos', undefined, token)).datos;
+    const r = await api('POST', '/api/panel/prueba', {}, token);
+    assert.equal(r.estado, 200, JSON.stringify(r.datos));
+    assert.ok(r.datos.resumen.turnos > 100, 'turnos: ' + r.datos.resumen.turnos);
+    assert.ok(r.datos.resumen.clientes > 40);
+    const d = (await api('GET', '/api/panel/datos', undefined, token)).datos;
+    assert.ok(d.turnos.length >= antes.turnos.length + 100);
+    assert.ok(d.turnos.some((t) => t.estado === 'atendido') && d.turnos.some((t) => t.estado === 'novino') && d.turnos.some((t) => t.estado === 'confirmado'));
+    assert.ok(d.turnos.some((t) => t.enLocal), 'hay clientes anotados en el local');
+    assert.ok(d.mov.some((m) => m.cat === 'servicio' && m.turno) && d.mov.some((m) => m.cat === 'producto') && d.mov.some((m) => m.cat === 'gasto'));
+    assert.equal(d.productos.length, 10);
+    assert.ok(d.productos.some((p) => p.stock <= p.minimo), 'algún producto queda bajo el mínimo');
+    assert.ok(d.registro.bloqueados.length >= 1);
+    assert.ok(Object.values(d.registro.fichas).some((f) => f.anteriores.length), 'un cliente cambió de número');
+    assert.ok(d.versiones.datos > antes.versiones.datos, 'los otros celulares recargan todo');
+    // Cada cobro de un turno es de un turno atendido
+    const atendidos = new Set(d.turnos.filter((t) => t.estado === 'atendido').map((t) => t.id));
+    assert.ok(d.mov.filter((m) => m.cat === 'servicio' && m.turno).every((m) => atendidos.has(m.turno)));
+    // Ninguna hora confirmada se pisa con otra del mismo barbero
+    const usados = new Set();
+    for (const t of d.turnos.filter((x) => x.estado !== 'cancelado')) {
+      for (let j = 0; j < Math.ceil(t.dur / 30); j++) {
+        const k = t.barbero + t.fecha + (t.min + j * 30);
+        assert.ok(!usados.has(k), 'turnos superpuestos: ' + k);
+        usados.add(k);
+      }
+    }
+    // Se puede cargar otra vez: solo usa horas libres
+    assert.equal((await api('POST', '/api/panel/prueba', {}, token)).estado, 200);
+  });
+
+  test('empezar de cero borra turnos, clientes, caja y stock; quedan barberos, cuentas, fotos y servicios', async () => {
+    const webp = 'data:image/webp;base64,' + Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBPVP8 '), Buffer.alloc(20)]).toString('base64');
+    await api('PUT', '/api/panel/fotos/logo', { src: webp, w: 512, h: 512 }, token);
+    assert.equal((await api('POST', '/api/panel/empezar-de-cero', {}, token)).estado, 400, 'hay que confirmar');
+    const r = await api('POST', '/api/panel/empezar-de-cero', { confirmar: 'BORRAR' }, token);
+    assert.equal(r.estado, 200);
+    const d = (await api('GET', '/api/panel/datos', undefined, token)).datos;
+    assert.deepEqual([d.turnos.length, d.mov.length, d.productos.length, d.movStock.length, Object.keys(d.registro.ids).length, d.registro.bloqueados.length], [0, 0, 0, 0, 0, 0]);
+    assert.ok(d.config.barberos.filter((b) => b.activo).length >= 2);
+    assert.ok(d.config.servicios.length >= 13);
+    assert.ok(d.fotos.logo, 'el logo sigue');
+    assert.equal((await api('POST', '/api/acceso/ingresar', { usuario: 'barbero3', clave: 'Peine.Verde.33' })).estado, 200, 'las cuentas siguen');
+    // Los clientes nuevos vuelven a empezar en el N.º 1
+    const n = await reservar({ fecha: D2, min: 480, nombre: 'Primer Cliente', tel: '0981 999 000', dispositivo: 'celular-nuevo-01' });
+    assert.equal(n.estado, 201, JSON.stringify(n.datos));
+    const d2 = (await api('GET', '/api/panel/datos', undefined, token)).datos;
+    assert.equal(d2.registro.ids['t595981999000|primer cliente'], 1);
+  });
+});
