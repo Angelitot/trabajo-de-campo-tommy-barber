@@ -656,3 +656,83 @@ kbd{display:inline-flex;align-items:center;justify-content:center;min-width:24px
   .poste-tubo.gira,.pa-pin.error{animation:none}
   .btn{transition:none}
 }
+
+/* ===== Barberos, servicios nuevos, números bloqueados y fotos ===== */
+.rv-barberos{display:flex;flex-wrap:wrap;gap:8px}
+.rv-barbero{min-height:44px;padding:8px 14px;border:2px solid #000;border-radius:4px;background:#fff;color:#000;font:inherit;font-size:16px;font-weight:700;cursor:pointer}
+.rv-barbero:hover{background:#F6F7F6}
+.rv-barbero.elegido{background:#000;color:#fff}
+.rv-ayuda.error{color:var(--rojo);font-weight:700}
+.horarios-barberos{margin-top:18px;padding-top:14px;border-top:2px solid rgba(255,255,255,.35)}
+.horarios-barberos p{margin:4px 0 0;font-size:16px}
+.horarios-barberos-t{font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.at-barberos{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
+.at-barbero{display:inline-flex;align-items:center;gap:10px;min-height:48px;padding:8px 16px;border:2px solid #000;border-radius:4px;background:#fff;color:#000;font:inherit;font-size:17px;font-weight:800;cursor:pointer}
+.at-barbero:hover{background:#F6F7F6}
+.at-barbero[aria-pressed="true"]{background:#000;color:#fff}
+.at-barbero-n{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;padding:0 6px;border-radius:999px;background:var(--chapa);color:#000;font-size:14px;font-variant-numeric:tabular-nums}
+.at-barbero[aria-pressed="true"] .at-barbero-n{background:var(--rojo);color:#fff}
+.at-nota-pasar{margin:10px 0 0;font-size:14px;color:var(--gris)}
+.btn-peligro{border-color:var(--rojo);color:var(--rojo)}
+.btn-peligro:hover{background:#FBE9EC}
+.pr-acciones{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;align-self:center}
+.pr-acciones .link-btn{padding-left:0}
+.pr-quitar{flex:1 1 100%}
+.pr-oculto{opacity:.85}
+.sv-form{max-width:640px;margin:0 0 8px}
+.sv-form .segmentado{margin-top:6px}
+.sv-campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0 16px}
+.pill-bloq{border-color:#000;background:#000;color:#fff}
+.cl-bloq{margin-top:14px}
+.cl-bloqueados{margin:0 0 28px}
+.cl-bloq-lista{margin:12px 0 0;padding:0;list-style:none}
+.cl-bloq-lista li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding:12px 14px;margin-top:8px;background:#fff;border:2px solid #000;border-radius:4px}
+.cl-bloq-lista p{margin:0}
+.cl-bloq-num{font-weight:700}
+.bb-lista{margin:0 0 20px;padding:0;list-style:none}
+.bb-item{margin-top:12px;padding:16px 18px;background:#fff;border:2px solid #000;border-radius:4px}
+.bb-cab{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px 18px}
+.bb-nombre{margin:0;font-weight:800;font-stretch:75%;font-size:24px;line-height:1.1}
+.bb-dias{margin:6px 0 0;font-weight:600}
+.bb-datos{margin:4px 0 0;font-size:15px}
+.bb-botones{display:flex;flex-wrap:wrap;gap:8px}
+.bb-form{margin-top:16px;max-width:640px}
+.bb-item .bb-form{border-style:dashed}
+.bb-dias{margin:16px 0 0;padding:0;border:0}
+.bb-dias legend{padding:0;font-weight:700}
+.bb-dia{display:grid;grid-template-columns:minmax(110px,1fr) minmax(0,110px) auto minmax(0,110px);align-items:center;gap:8px;margin-top:8px}
+.tarjeta-form .bb-dia-check{display:flex;align-items:center;gap:10px;margin:0;font-weight:700}
+.bb-dia-check input{width:22px;height:22px;accent-color:#000}
+.bb-nota{margin:12px 0 0;font-size:14px}
+.bb-quitar{margin-top:14px;padding:12px 14px;border:2px dashed var(--rojo);border-radius:4px}
+.bb-quitar p{margin:0}
+.bb-quitar .hz-alerta{margin-top:10px}
+.bb-quitar .campo-label{display:block;margin:12px 0 6px;font-weight:700;font-size:15px}
+.bb-quitar .campo{max-width:320px}
+.bb-quitados{margin-top:18px;font-size:15px}
+.rep-tabla{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.rep-tabla th,.rep-tabla td{padding:10px 12px;border-bottom:2px solid #000;text-align:left}
+.rep-tabla thead th{font-size:14px;color:var(--gris)}
+.rep-tabla td{font-weight:700}
+.ft-dos{display:flex;flex-wrap:wrap;gap:20px;margin-top:16px}
+.ft-caja{display:flex;flex-direction:column;gap:12px}
+.ft-caja .prod-form-acciones{margin-top:0}
+.ft-logo{width:140px;height:140px;border:2px solid #000}
+.ft-fachada{display:block;width:100%;max-width:420px;height:auto;aspect-ratio:4/3;object-fit:cover;border:2px solid #000}
+.ft-nota{margin:0;font-size:14px}
+.ft-input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.ft-input:focus-visible+label{outline:3px solid var(--rojo);outline-offset:3px}
+.ft-input+label{cursor:pointer}
+.ft-galeria-caja{margin-top:32px}
+.ft-galeria{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin:12px 0 16px;padding:0;list-style:none}
+.ft-item{display:flex;flex-direction:column;gap:8px;padding:10px;background:#fff;border:2px solid #000;border-radius:4px}
+.ft-item img{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:cover}
+.ft-item label{margin:0;font-weight:700;font-size:14px}
+.ft-alt{margin:0;font-size:14px}
+.ft-botones{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
+@media (max-width:520px){
+  .bb-dia{grid-template-columns:1fr 1fr;row-gap:6px}
+  .bb-dia .bb-dia-check{grid-column:1/-1}
+  .bb-dia>span{display:none}
+}
+.link-btn.link-rojo{color:var(--rojo);font-weight:700}

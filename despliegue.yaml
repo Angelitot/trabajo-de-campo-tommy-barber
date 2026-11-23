@@ -12,6 +12,8 @@ services:
       ignoredPaths:
         - README.md
         - herramientas/empaquetar.py
+        - herramientas/capturas.py
+        - base-de-datos/**
         - docs/**
         - pruebas/**
     envVars:
