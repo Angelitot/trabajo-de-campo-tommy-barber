@@ -2,7 +2,8 @@
 Todo corre dentro de una transacción que se deshace al final: no deja datos.
 
 Uso: python pruebas/probar_base_de_datos.py "postgres://usuario:clave@host:puerto/base"
-(o con la variable DATABASE_URL). Necesita: pip install "psycopg[binary]"."""
+(o con la variable DATABASE_URL). Necesita: pip install "psycopg[binary]".
+La base tiene que tener los tres archivos de base-de-datos/ aplicados (la API los aplica sola al arrancar)."""
 import os, sys
 import psycopg
 
@@ -44,21 +45,26 @@ with psycopg.connect(URL) as con:
     rechaza(cur, "INSERT INTO horario_barbero VALUES (%s, 5, '12:00', '08:00')", (b2,), 'la hora de salida tiene que ser después de la de entrada')
 
     # --- Clientes: papá e hijo con el mismo número; el mismo cliente no se repite
-    cur.execute("INSERT INTO cliente (nombre, nombre_normalizado, telefono) VALUES ('Óscar Duarte', 'oscar duarte', '595981000111') RETURNING id")
-    papa = cur.fetchone()[0]
-    cur.execute("INSERT INTO cliente (nombre, nombre_normalizado, telefono) VALUES ('Thiago Duarte', 'thiago duarte', '595981000111') RETURNING id")
-    hijo = cur.fetchone()[0]
+    # Cada cliente se reconoce por su número + nombre (cliente_alias); la ficha guarda el último nombre y número
+    def nuevo_cliente(nombre, norm, tel):
+        cur.execute("INSERT INTO cliente (nombre, nombre_normalizado, telefono) VALUES (%s, %s, %s) RETURNING id", (nombre, norm, tel))
+        cid = cur.fetchone()[0]
+        cur.execute("INSERT INTO cliente_alias (telefono, nombre_normalizado, cliente_id) VALUES (%s, %s, %s)", (tel, norm, cid))
+        return cid
+    papa = nuevo_cliente('Óscar Duarte', 'oscar duarte', '595981000111')
+    hijo = nuevo_cliente('Thiago Duarte', 'thiago duarte', '595981000111')
     check(papa != hijo, 'un papá y su hijo con el mismo número son dos clientes')
-    rechaza(cur, "INSERT INTO cliente (nombre, nombre_normalizado, telefono) VALUES ('OSCAR DUARTE', 'oscar duarte', '595981000111')", None,
+    rechaza(cur, "INSERT INTO cliente_alias (telefono, nombre_normalizado, cliente_id) VALUES ('595981000111', 'oscar duarte', %s)", (hijo,),
             'el mismo número con el mismo nombre no se duplica')
-    cur.execute("INSERT INTO cliente (nombre, nombre_normalizado) VALUES ('Pedro Gómez', 'pedro gomez')")
-    rechaza(cur, "INSERT INTO cliente (nombre, nombre_normalizado) VALUES ('Pedro Gomez', 'pedro gomez')", None,
+    pedro = nuevo_cliente('Pedro Gómez', 'pedro gomez', None)
+    rechaza(cur, "INSERT INTO cliente_alias (nombre_normalizado, cliente_id) VALUES ('pedro gomez', %s)", (papa,),
             'sin número, el mismo nombre tampoco se duplica')
     rechaza(cur, "INSERT INTO cliente (nombre, nombre_normalizado, telefono) VALUES ('X', 'x', '0981123456')", None,
             'el número se guarda en formato WhatsApp (595…)')
     # Cambio de número: el anterior queda guardado
     cur.execute("INSERT INTO cliente_telefono_anterior (cliente_id, telefono) VALUES (%s, '595981000111')", (papa,))
-    cur.execute("UPDATE cliente SET telefono = '595994000512' WHERE id = %s", (papa,))
+    cur.execute("UPDATE cliente SET telefono = '595994000512', telefono_fijo = true, telefono_cambiado_en = now() WHERE id = %s", (papa,))
+    cur.execute("INSERT INTO cliente_alias (telefono, nombre_normalizado, cliente_id) VALUES ('595994000512', 'oscar duarte', %s)", (papa,))
     cur.execute("SELECT c.nombre FROM cliente c JOIN cliente_telefono_anterior a ON a.cliente_id = c.id WHERE a.telefono = '595981000111'")
     check(cur.fetchone()[0] == 'Óscar Duarte', 'una reserva con el número anterior se reconoce')
     rechaza(cur, "INSERT INTO clientes_distintos VALUES (%s, %s)", (hijo, papa) if hijo > papa else (papa, hijo), 'los pares «son distintos» se guardan en orden (el menor primero)')
@@ -89,11 +95,16 @@ with psycopg.connect(URL) as con:
     # Cobrar, no vino, cancelar
     rechaza(cur, "UPDATE turno SET estado = 'atendido' WHERE id = %s", (t1,), 'un turno cobrado tiene que tener medio de pago')
     cur.execute("UPDATE turno SET estado = 'atendido', medio_pago = 'Efectivo' WHERE id = %s", (t1,))
-    cur.execute("INSERT INTO movimiento_caja (tipo, categoria, concepto, monto, medio_pago, turno_id, barbero_id) VALUES ('entrada', 'servicio', 'Corte, Thiago Duarte', 35000, 'Efectivo', %s, 1)", (t1,))
-    rechaza(cur, "INSERT INTO movimiento_caja (tipo, categoria, concepto, monto, medio_pago, turno_id) VALUES ('entrada', 'servicio', 'Otra vez', 35000, 'Efectivo', %s)", (t1,),
-            'un turno no se cobra dos veces')
-    rechaza(cur, "INSERT INTO movimiento_caja (tipo, categoria, concepto, monto, medio_pago) VALUES ('salida', 'servicio', 'X', 100, 'Efectivo')", None,
-            'una salida de caja no puede ser de un servicio')
+    caja = "INSERT INTO movimiento_caja (ref, tipo, categoria, concepto, monto, medio_pago, turno_id, barbero_id) VALUES (%s, %s, %s, %s, %s, 'Efectivo', %s, %s)"
+    cur.execute(caja, ('m1', 'entrada', 'servicio', 'Corte, Thiago Duarte', 35000, t1, 1))
+    rechaza(cur, caja, ('m2', 'entrada', 'servicio', 'Otra vez', 35000, t1, 1), 'un turno no se cobra dos veces')
+    rechaza(cur, caja, ('m1', 'entrada', 'otro', 'Mismo ref', 100, None, None), 'cada movimiento de la caja tiene su propio identificador')
+    cur.execute('SAVEPOINT deshacer')
+    cur.execute("UPDATE movimiento_caja SET anulado_en = now() WHERE ref = 'm1'")
+    cur.execute(caja, ('m3', 'entrada', 'servicio', 'Corte, Thiago Duarte', 35000, t1, 1))
+    check(True, 'si se deshace el cobro, el turno se puede volver a cobrar')
+    cur.execute('ROLLBACK TO SAVEPOINT deshacer')
+    rechaza(cur, caja, ('m4', 'salida', 'servicio', 'X', 100, None, None), 'una salida de caja no puede ser de un servicio')
     rechaza(cur, "UPDATE turno SET estado = 'cancelado' WHERE id = %s", (t4,), 'un turno cancelado dice quién lo canceló')
     cur.execute("UPDATE turno SET estado = 'cancelado', cancelado_por = 'barberia', cancelado_en = now() WHERE id = %s", (t4,))
     cur.execute(turno, ('TB-0005', None, 'Otro cliente', None, 1, '10:00'))
@@ -116,18 +127,18 @@ with psycopg.connect(URL) as con:
     rechaza(cur, "INSERT INTO servicio (id, grupo, nombre, precio, duracion_min) VALUES ('n1', 'servicio', 'CORTE CLÁSICO Y DEGRADADO', 30000, 30)", None,
             'no puede haber dos servicios con el mismo nombre')
     cur.execute("INSERT INTO servicio (id, grupo, nombre, precio, duracion_min) VALUES ('n1', 'servicio', 'Corte para niños', 25000, 30)")
-    rechaza(cur, "INSERT INTO producto (tipo, nombre, unidad, unidad_plural, stock) VALUES ('venta', 'Cera', 'pote', 'potes', -1)", None,
+    rechaza(cur, "INSERT INTO producto (ref, tipo, nombre, unidad, unidad_plural, stock) VALUES ('p1', 'venta', 'Cera', 'pote', 'potes', -1)", None,
             'el stock no puede quedar negativo')
-    rechaza(cur, "INSERT INTO foto (lugar, archivo_original) VALUES ('logo', 'img/logo.jpg')", None,
+    rechaza(cur, "INSERT INTO foto (ref, lugar, archivo_original) VALUES ('f1', 'logo', 'img/logo.jpg')", None,
             'solo las fotos de la galería pueden ser una de las originales')
-    cur.execute("INSERT INTO foto (lugar, archivo, tipo_mime, ancho, alto) VALUES ('logo', '\\x00', 'image/webp', 512, 512)")
-    rechaza(cur, "INSERT INTO foto (lugar, archivo, tipo_mime) VALUES ('logo', '\\x00', 'image/webp')", None, 'hay un solo logo')
-    cur.execute("INSERT INTO foto (lugar, orden, archivo_original, descripcion) VALUES ('galeria', 1, 'img/galeria/corte-1.jpg', 'Degradado bajo'), ('galeria', 2, 'img/galeria/corte-2.jpg', 'Mullet')")
+    cur.execute("INSERT INTO foto (ref, lugar, archivo, tipo_mime, ancho, alto) VALUES ('f2', 'logo', '\\x00', 'image/webp', 512, 512)")
+    rechaza(cur, "INSERT INTO foto (ref, lugar, archivo, tipo_mime) VALUES ('f3', 'logo', '\\x00', 'image/webp')", None, 'hay un solo logo')
+    cur.execute("INSERT INTO foto (ref, lugar, orden, archivo_original, descripcion) VALUES ('original-0', 'galeria', 1, 'img/galeria/corte-1.jpg', 'Degradado bajo'), ('original-1', 'galeria', 2, 'img/galeria/corte-2.jpg', 'Mullet')")
     check(True, 'la galería puede mezclar fotos originales y nuevas')
 
     # --- Cambio de horario solo para un barbero
-    cur.execute("INSERT INTO cambio_horario (tipo, fecha_desde, fecha_hasta, motivo, barbero_id) VALUES ('cerrado', '2030-01-05', '2030-01-05', 'Trámite', %s)", (b2,))
-    rechaza(cur, "INSERT INTO cambio_horario (tipo, fecha_desde, fecha_hasta, hora_desde, hora_hasta, barbero_id) VALUES ('especial', '2030-01-07', '2030-01-07', '09:00', '13:00', %s)", (b2,),
+    cur.execute("INSERT INTO cambio_horario (ref, tipo, fecha_desde, fecha_hasta, motivo, barbero_id) VALUES ('h1', 'cerrado', '2030-01-05', '2030-01-05', 'Trámite', %s)", (b2,))
+    rechaza(cur, "INSERT INTO cambio_horario (ref, tipo, fecha_desde, fecha_hasta, hora_desde, hora_hasta, barbero_id) VALUES ('h2', 'especial', '2030-01-07', '2030-01-07', '09:00', '13:00', %s)", (b2,),
             '«otro horario» es para todo el local, no para un barbero')
 
     con.rollback()

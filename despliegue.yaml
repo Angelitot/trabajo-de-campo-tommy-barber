@@ -1,6 +1,9 @@
-# Publicación del sitio de Tommy Barber (blueprint).
-# Cada cambio que se une a main arma la versión optimizada (npm run build)
-# y publica la carpeta publico/ como sitio estático.
+# Publicación de Tommy Barber (blueprint).
+# - tommy-barber: cada cambio que se une a main arma la versión optimizada (npm run build)
+#   y publica la carpeta publico/ como sitio estático.
+# - tommy-barber-api: la API (servidor/) que guarda todo en la base de datos.
+#   Las claves (DATABASE_URL, DUENO_USUARIO, DUENO_CLAVE y, si se quiere, DATABASE_CA) se cargan en el panel de Render:
+#   no van en el repositorio.
 services:
   - type: web
     runtime: static
@@ -14,6 +17,7 @@ services:
         - herramientas/empaquetar.py
         - herramientas/capturas.py
         - base-de-datos/**
+        - servidor/**
         - docs/**
         - pruebas/**
     envVars:
@@ -21,7 +25,15 @@ services:
         value: "22"
       - key: SKIP_INSTALL_DEPS
         value: "true"
+    routes:
+      # El panel se abre en /acceso-barberos (es la misma página)
+      - type: rewrite
+        source: /acceso-barberos
+        destination: /index.html
     headers:
+      - path: /acceso-barberos
+        name: X-Robots-Tag
+        value: noindex
       # Los archivos de assets/ llevan un hash en el nombre: el navegador puede guardarlos un año.
       - path: /assets/*
         name: Cache-Control
@@ -35,3 +47,30 @@ services:
       - path: /*
         name: X-Frame-Options
         value: DENY
+
+  - type: web
+    runtime: node
+    name: tommy-barber-api
+    region: oregon
+    plan: free
+    buildCommand: cd servidor && npm ci --omit=dev
+    startCommand: node servidor/index.js
+    healthCheckPath: /api/salud
+    autoDeployTrigger: commit
+    buildFilter:
+      paths:
+        - servidor/**
+        - base-de-datos/**
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: SITIO_URL
+        value: https://tommy-barber.onrender.com
+      - key: DATABASE_URL
+        sync: false
+      - key: DUENO_USUARIO
+        sync: false
+      - key: DUENO_CLAVE
+        sync: false
+      - key: DATABASE_CA
+        sync: false

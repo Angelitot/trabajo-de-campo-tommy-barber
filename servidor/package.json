@@ -1,0 +1,23 @@
+{
+  "name": "tommy-barber-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "API de Tommy Barber: turnos, panel y acceso de barberos",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test --test-concurrency=1 pruebas/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "compression": "1.8.2",
+    "express": "5.3.0",
+    "express-rate-limit": "8.7.5",
+    "helmet": "8.3.0",
+    "pg": "8.23.1",
+    "zod": "4.6.7"
+  }
+}
