@@ -5,7 +5,7 @@ Trabajo de campo: diseño web para **Tommy Barber**, barbería de Quiindy (Const
 - **Sitio para clientes:** precios oficiales (7 servicios y 6 combos), galería de cortes, horarios con los cambios del local, cómo llegar, WhatsApp (0972 496 916) e Instagram.
 - **Reserva de turnos:** servicio o combo, con qué barbero (o «el que esté libre»), día y hora según el horario real, nombre y WhatsApp, y comprobante. Un papá puede reservar para sus hijos con su número; hay un tope de turnos pendientes para frenar los turnos falsos.
 - **Mis turnos:** el cliente ve los turnos que reservó desde su celular y, mientras no hayan empezado, puede cambiarlos de día u hora o cancelarlos.
-- **Panel del dueño:**
+- **Panel** (en `/acceso-barberos`, con usuario y contraseña; el dueño ve todo y cada barbero, lo suyo):
   - **Atender:** el turno que corresponde ahora, en grande, con todo para cobrar, marcar «no vino» o pasarlo después; el siguiente al lado y la fila del día. Se usa con una mano o con el teclado (espacio y flechas para moverse, 1-2-3 para cobrar). Al que llega sin turno le da la primera hora libre del día y, si deja su WhatsApp, avisa cuándo escribirle. «Pasar después» intercambia las horas con el siguiente. Si hay varios barberos, cada uno tiene su botón y ve su fila. Se entra directo con `#atender`.
   - **Hoy:** agenda del día para cobrar, marcar «no vino» o cancelar, la caja del día y lo que entró en la semana.
   - **Turnos:** los turnos de los próximos días, con recordatorio por WhatsApp, cancelación y aviso al cliente, o «es falso: cancelar y bloquear el número».
@@ -20,15 +20,23 @@ Trabajo de campo: diseño web para **Tommy Barber**, barbería de Quiindy (Const
 
 La documentación completa del trabajo (relevamiento, requerimientos, diseño, cómo está hecho el sistema, pruebas y capturas) está en [docs/DOCUMENTACION.md](docs/DOCUMENTACION.md), y el diseño de la base de datos en [docs/BASE_DE_DATOS.md](docs/BASE_DE_DATOS.md).
 
-Es un prototipo que funciona en el navegador, sin servidor: los turnos, la caja, el stock, los servicios, los barberos, las fotos y los cambios de horario se guardan en el navegador (localStorage). La base de datos PostgreSQL ya está creada (`base-de-datos/`); falta el servidor que conecte la página con ella. Los avisos por WhatsApp abren WhatsApp con el mensaje listo (`wa.me`): el dueño solo toca Enviar.
+La página publicada guarda todo en una base de datos PostgreSQL (`base-de-datos/`) a través de una API propia (`servidor/`, ver [docs/API.md](docs/API.md)). La API está publicada en Render y la base de datos en Aiven. Los avisos por WhatsApp abren WhatsApp con el mensaje listo (`wa.me`): el dueño solo toca Enviar.
+
+Abriendo `index.html` desde la carpeta, la página funciona en **modo demostración**: datos de ejemplo guardados en el navegador, sin servidor, para presentarla o probarla sin internet.
 
 ## Cómo abrirlo
 
+**La página publicada:** https://tommy-barber.onrender.com. El panel está en https://tommy-barber.onrender.com/acceso-barberos (no hay botón en la página de los clientes). El dueño entra con su usuario y su contraseña, y desde **Barberos** les da acceso a los demás barberos.
+
+**En modo demostración (sin internet):**
+
 1. Cloná o descargá el repositorio (en GitHub: **Code > Download ZIP**).
 2. Abrí `index.html` con el navegador.
-3. Para entrar al panel, tocá **Acceso del dueño** al pie de la página. PIN de prueba: **2121**.
+3. Para entrar al panel, agregá `#panel` al final de la dirección. PIN de prueba: **2121**.
 
 ## Cómo probarlo en la presentación
+
+En modo demostración (en la página publicada no hay datos de ejemplo ni «Reiniciar»):
 
 1. En el sitio, reservá un turno para mañana con tu propio número de WhatsApp.
 2. Arriba aparece «Tenés turno…». En **Mis turnos** se ve el turno y se puede cambiar de día u hora o cancelar.
@@ -58,9 +66,10 @@ Los turnos con números del tipo `0981 000 …` son de ejemplo: en esos, «Recor
 | `herramientas/empaquetar.py` | Arma una versión en un solo archivo para mandarla o presentarla sin internet |
 | `herramientas/publicar.mjs` | Arma `publico/`, la versión optimizada que se publica |
 | `herramientas/capturas.py` | Saca las capturas del panel para la documentación |
-| `base-de-datos/` | Base de datos PostgreSQL: esquema y datos iniciales del local |
+| `base-de-datos/` | Base de datos PostgreSQL: esquema, datos iniciales del local y lo que agrega la API |
+| `servidor/` | La API: conecta la página y el panel con la base de datos |
 | `package.json` | Herramientas para armar la versión optimizada (`npm run build`) |
-| `despliegue.yaml` | Configuración de publicación del sitio (blueprint) |
+| `despliegue.yaml` | Configuración de publicación del sitio y de la API (blueprint) |
 | `docs/` | Documentación del proyecto, con capturas |
 | `pruebas/` | Pruebas automáticas del sitio y del panel |
 
@@ -79,7 +88,7 @@ python pruebas/probar_llegada_clientes.py
 python pruebas/probar_barberos_servicios_fotos.py
 ```
 
-La prueba de la base de datos necesita la dirección de una base PostgreSQL (ver [docs/BASE_DE_DATOS.md](docs/BASE_DE_DATOS.md#pruebas)).
+Esas pruebas usan el modo demostración. La prueba de la base de datos necesita la dirección de una base PostgreSQL (ver [docs/BASE_DE_DATOS.md](docs/BASE_DE_DATOS.md#pruebas)), y las de la API, además, Node.js 22 (ver [docs/API.md](docs/API.md#pruebas)).
 
 Al final dicen «todo bien» o qué falló. Las capturas quedan en `pruebas/capturas/`.
 
@@ -90,7 +99,7 @@ Al principio de `js/app.js`:
 - `SERVICIOS`: la lista original del local (nombre, grupo, qué incluye cada combo, duración en minutos y precio en guaraníes). El dueño cambia precios y duraciones, agrega servicios y quita los que no hace desde el panel, sin tocar el código.
 - Los barberos y las fotos se cargan desde el panel.
 - `HORAS`: horario de atención de cada día, en minutos desde la medianoche (480 son las 08:00 y 1050 las 17:30).
-- `PIN_DUENO`: el PIN del panel.
+- `PIN_DUENO`: el PIN del panel en modo demostración (en la página publicada se entra con usuario y contraseña).
 - `UNIDADES`: cómo se cuentan los productos del stock (cajas, potes, frascos…).
 
 Los textos fijos, como la dirección o la descripción del inicio, están en `index.html`.
@@ -120,7 +129,7 @@ Si prefieren no usar la terminal, [GitHub Desktop](https://desktop.github.com) h
 
 ## Versión publicada
 
-El sitio se publica solo: cada cambio que se une a `main` arma la versión optimizada y la sube, con la configuración de `despliegue.yaml`.
+El sitio y la API se publican solos: cada cambio que se une a `main` arma la versión optimizada de la página y, si cambió `servidor/` o `base-de-datos/`, vuelve a publicar la API, con la configuración de `despliegue.yaml`. La dirección de la API va en `<meta name="api">`, en `index.html`.
 
 La versión optimizada sale de los mismos archivos (`index.html`, `css/`, `js/`, `img/` y `fuentes/`), así que se sigue trabajando ahí. Para armarla en tu computadora hace falta [Node.js](https://nodejs.org) 20 o más nuevo:
 

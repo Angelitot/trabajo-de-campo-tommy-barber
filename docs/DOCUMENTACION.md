@@ -81,7 +81,8 @@ La lista no indica cuánto dura cada servicio. Las duraciones del sistema son es
 
 **Dueño**
 
-- Entrar al panel con un PIN.
+- Entrar al panel con usuario y contraseña, desde una dirección aparte que los clientes no ven.
+- Darle a cada barbero su propio acceso, en el que vea solo sus turnos y sus cobros.
 - Atender rápido mientras corta: ver de un vistazo el turno que corresponde ahora y el siguiente, y cobrar, marcar «no vino» o pasarlo después con un toque o una tecla.
 - Sumar a la fila a alguien que llega sin turno, ya que el dueño atiende por orden de llegada. El sistema le da la primera hora libre que queda en el día (o la que se elija entre las libres) y, si hoy ya no hay lugar, le ofrece las horas libres del próximo día.
 - Tomarle el WhatsApp al que llega sin turno y se va, para avisarle cuando le falte un cliente.
@@ -150,7 +151,8 @@ La identidad sale de la fachada del local: pared de ladrillo, persiana metálica
 | Parte | Tecnología |
 |---|---|
 | Sitio y panel | HTML, CSS y JavaScript, sin frameworks |
-| Datos del prototipo | `localStorage` del navegador |
+| Servidor (API) | Node.js 22 con Express (ver [API.md](API.md)) |
+| Datos en modo demostración | `localStorage` del navegador |
 | Avisos | Enlaces de WhatsApp (`wa.me`) con el mensaje ya escrito |
 | Versión publicada | Node.js con esbuild (minificación) y sharp (imágenes) |
 | Pruebas | Python con Playwright (navegador automatizado) |
@@ -160,17 +162,21 @@ La identidad sale de la fachada del local: pared de ladrillo, persiana metálica
 
 ### Arquitectura
 
-Es una sola página. El sitio de los clientes, «Mis turnos» y el panel del dueño son vistas de esa página, y se cambia de una a otra con la dirección (`#panel`, `#mis-turnos`). No hay servidor propio: todo corre en el navegador y los datos se guardan ahí mismo.
+Es una sola página. El sitio de los clientes, «Mis turnos» y el panel son vistas de esa página. Los datos están en una base PostgreSQL y la página los pide y los guarda a través de la API (`servidor/`).
 
 ```mermaid
 flowchart LR
     C[Cliente<br>celular o computadora] -->|reserva, consulta y cancela| S[Sitio<br>index.html + app.js]
-    D[Dueño] -->|PIN| P[Panel<br>misma página, #panel]
-    S <--> L[(localStorage<br>del navegador)]
-    P <--> L
+    D[Dueño y barberos] -->|usuario y contraseña| P[Panel<br>misma página, /acceso-barberos]
+    S <--> A[API<br>servidor/]
+    P <--> A
+    A <--> B[(PostgreSQL)]
     P -->|recordatorios y avisos| W[WhatsApp<br>wa.me]
     W --> C
 ```
+
+- **Con la base de datos** (la página publicada): el panel se abre solo en `/acceso-barberos`, con usuario y contraseña, y no hay botón de acceso en la página de los clientes. El dueño ve todo; cada barbero ve Atender, Hoy y Turnos con sus propios turnos. Los turnos que reserva un cliente le aparecen al panel en todos los celulares en menos de 15 segundos. Cómo funciona, la seguridad y las direcciones de la API están en [API.md](API.md).
+- **En modo demostración** (abriendo `index.html` desde la carpeta, en `localhost` o con `?demo`): funciona sin servidor, con datos de ejemplo guardados en el navegador y el panel en `#panel` con el PIN 2121.
 
 ### Archivos
 
@@ -197,13 +203,14 @@ El código está dentro de una función que se ejecuta sola, para no ensuciar el
 4. **Barberos y cambios de horario:** los barberos con sus días y horas, los cierres y horarios especiales del dueño, y el cálculo del horario real de cada día (`horasDe`) y de cada barbero (`horasBarbero`), que usan el sitio, la reserva y el panel.
 5. **Datos de ejemplo:** agenda, caja, stock y un historial de seis meses para que el panel tenga contenido en la presentación.
 6. **Sitio:** estado del local, precios, horarios, fotos y el asistente de reserva y de cambio de turno, con los topes contra turnos falsos.
-7. **Panel:** acceso con PIN y las vistas Atender, Hoy, Turnos, Caja, Stock, Servicios, Horario, Barberos, Clientes, Reportes y Fotos.
+7. **Panel:** acceso (usuario y contraseña, o PIN en modo demostración) y las vistas Atender, Hoy, Turnos, Caja, Stock, Servicios, Horario, Barberos, Clientes, Reportes y Fotos.
+8. **Conexión con la base de datos:** carga lo que manda la API, manda solo lo que cambió, trae las novedades de los otros celulares y el ingreso con contraseña (solo con la base de datos).
 
 La interfaz se arma con plantillas de texto y responde a los clics con un único manejador por zona, que lee el atributo `data-accion` del botón tocado.
 
 ### Datos que guarda
 
-El prototipo todavía no está conectado a la base de datos: todo se guarda en el `localStorage` del navegador, en siete claves (y una octava, `tommybarber-atender`, recuerda qué barbero usa Atender en cada celular):
+Con la base de datos, todo se guarda en PostgreSQL (ver [BASE_DE_DATOS.md](BASE_DE_DATOS.md)) y el celular guarda solo la sesión del panel, los códigos y claves de «Mis turnos» y qué barbero usa Atender. En modo demostración, todo se guarda en el `localStorage` del navegador, en siete claves (y una octava, `tommybarber-atender`, recuerda qué barbero usa Atender en cada celular):
 
 | Clave | Contenido |
 |---|---|
@@ -352,9 +359,13 @@ En el último paso, el nombre es el de quien viene a cortarse: un papá puede re
 
 ### Panel del dueño
 
-Se entra con **Acceso del dueño**, al pie de la página. El PIN de prueba es **2121**.
+Se entra en **/acceso-barberos** (https://tommy-barber.onrender.com/acceso-barberos) con usuario y contraseña. La página de los clientes no tiene botón para entrar. El dueño ve todo el panel; cada barbero ve Atender, Hoy y Turnos, solo con lo suyo. Cualquiera puede cambiar su contraseña con **Cambiar mi contraseña**, abajo del menú.
 
-![Acceso con PIN](capturas/07-panel-acceso.webp)
+![Ingreso al panel con usuario y contraseña](capturas/35-panel-ingreso.webp)
+
+En modo demostración se entra con `#panel` y el PIN de prueba **2121**.
+
+![Acceso con PIN en modo demostración](capturas/07-panel-acceso.webp)
 
 **Atender.** Es la pantalla para usar mientras se corta. Al abrirla ya aparece, en grande, el cliente que corresponde ahora: el primero de la fila del día que todavía no se cobró. Muestra la hora, el nombre, el servicio, cuánto falta o cuánto atraso tiene, y los botones para resolverlo sin buscar nada:
 
@@ -447,6 +458,10 @@ Con más de un barbero, **¿Para quién?** permite cerrar días u horas solo par
 
 ![Barbero nuevo](capturas/27-barbero-nuevo.webp)
 
+Con la base de datos, en cada barbero está su **acceso al panel**: el dueño le da un usuario y una contraseña («Darle acceso al panel»), le pone una contraseña nueva si se la olvida o le quita el acceso. Al quitar a un barbero, su acceso se cierra solo.
+
+![Barberos: acceso al panel de cada uno](capturas/36-barberos-acceso.webp)
+
 **Clientes.** Cada cliente tiene su número interno (N.º) y se reconoce por su WhatsApp junto con su nombre y apellido. La lista se ordena por los que más vienen, los recientes o los que faltaron, y se busca por nombre, número actual o número anterior. La ficha de cada cliente muestra:
 
 - visitas, cuánto gastó, faltas y cancelaciones;
@@ -509,7 +524,7 @@ Medición con Lighthouse en modo celular, con conexión móvil simulada:
 
 ## 9. Pruebas
 
-La carpeta `pruebas/` tiene seis recorridos automáticos con Playwright, que abren el sitio en un navegador real con el reloj fijo en el martes 27/10/2026 a las 10:05 (hora de Paraguay). Cada recorrido se hace en computadora y en celular. Además hay una prueba de la base de datos.
+La carpeta `pruebas/` tiene seis recorridos automáticos en modo demostración con Playwright, que abren el sitio en un navegador real con el reloj fijo en el martes 27/10/2026 a las 10:05 (hora de Paraguay). Cada recorrido se hace en computadora y en celular. Además hay una prueba de la base de datos.
 
 - **`probar_todo.py`** (50 comprobaciones por pantalla) prueba:
   - los precios oficiales;
@@ -527,6 +542,7 @@ La carpeta `pruebas/` tiene seis recorridos automáticos con Playwright, que abr
 - **`probar_llegada_clientes.py`** prueba la llegada sin turno (que se le dé la primera hora libre y no la hora actual, elegir otra hora, el número mal escrito, el aviso por WhatsApp cuando le falta un cliente y el turno para otro día si hoy no hay lugar) y el registro de clientes (N.º interno, posibles repetidos, «son distintos», unir fichas, buscar por el número anterior, cambiar número y que los cambios sigan después de recargar).
 - **`probar_barberos_servicios_fotos.py`** prueba los barberos (agregar uno que viene solo los sábados, nombres repetidos, editar y quitar pasando sus turnos), la reserva con barbero y con «el que esté libre», los topes de turnos (la misma persona, un papá con sus hijos, el celular y el número), Atender por barbero y el intercambio de horas con deshacer, «Es falso: cancelar y bloquear», bloquear y desbloquear números, los servicios nuevos y quitados, un cierre solo para un barbero, el reporte por barbero, las fotos (archivo inválido, logo, foto del local, galería, orden y vuelta a las originales) y que todo entre en la pantalla del celular.
 - **`probar_base_de_datos.py`** prueba las reglas de la base de datos con casos reales (ver [BASE_DE_DATOS.md](BASE_DE_DATOS.md#pruebas)).
+- **`probar_api.py`** levanta la API y la página con una base de verdad y las recorre como el cliente, el dueño (en dos celulares) y un barbero. Junto con las pruebas de `servidor/pruebas/` está explicado en [API.md](API.md#pruebas).
 - **`probar_precios.py`** prueba el cambio de precios desde el panel: la validación, el guardado, el historial, el sitio actualizado, que los turnos reservados conserven su precio y la vuelta a la lista original.
 
 Cómo correrlas:
@@ -546,9 +562,9 @@ También se pueden correr contra la versión publicada, pasando la dirección co
 
 ## 10. Publicación y base de datos
 
-- El sitio se publica en **Render** como sitio estático. Cada cambio que se une a `main` en GitHub arma la versión optimizada y la publica sola.
-- La base de datos es **PostgreSQL** y está en **Aiven**. Se diseñó a partir de lo que ya guarda el sistema: 17 tablas, 4 vistas y las reglas del negocio como restricciones. Tiene cargados el horario del local, el primer barbero y los 13 servicios con sus precios; los clientes y turnos se van a cargar cuando el sitio se conecte. El diseño completo, el diagrama y cómo se creó están en [BASE_DE_DATOS.md](BASE_DE_DATOS.md).
-- El sitio todavía guarda en el navegador: para que use la base falta el servidor (la API), que es el próximo paso.
+- El sitio y la API están publicados en **Render**. Cada cambio que se une a `main` en GitHub arma la versión optimizada del sitio y, si cambió el servidor, vuelve a publicar la API.
+- La base de datos es **PostgreSQL** y está en **Aiven**. Se diseñó a partir de lo que guarda el sistema: las tablas, las vistas y las reglas del negocio como restricciones. La API le agrega al arrancar lo que necesita (`base-de-datos/03-api.sql`). El diseño completo, el diagrama y cómo se creó están en [BASE_DE_DATOS.md](BASE_DE_DATOS.md).
+- La API (`servidor/`) conecta la página y el panel con la base: ver [API.md](API.md).
 
 ## 11. Trabajo en equipo
 
@@ -563,21 +579,21 @@ El código está en un repositorio privado de GitHub con los integrantes del gru
 | #5 | Cambios de horario, clientes, reportes, galería, WhatsApp del local y cambio de turno |
 | #6 | Hora libre para el que llega sin turno, aviso por WhatsApp y registro de clientes sin duplicados |
 | #7 | Barberos, reserva con barbero, intercambio de horas en Atender, servicios nuevos, fotos editables, protección contra turnos falsos y la base de datos |
+| #8 | La API: la página y el panel guardan en la base de datos, panel en `/acceso-barberos` con usuario y contraseña, y acceso de cada barbero a lo suyo |
 
 ## 12. Limitaciones y próximos pasos
 
-**Limitaciones del prototipo**
+**Limitaciones**
 
-- Los datos viven en cada navegador. Un turno que reserva un cliente desde su celular no le llega al panel del dueño en otro dispositivo. Para eso hace falta el servidor y la base de datos de la próxima etapa.
-- El PIN del panel es de prueba y está en el código. Con el servidor, el acceso tiene que validarse del lado del servidor.
 - Los mensajes de WhatsApp los envía el dueño a mano: el sistema solo abre WhatsApp con el texto listo.
-- Los topes contra turnos falsos y los números bloqueados se controlan en el navegador. Con el servidor se tienen que controlar también ahí, con la base de datos, porque alguien con malas intenciones puede saltarse lo que pasa en su navegador.
-- Las fotos que cambia el dueño quedan en su navegador; con el servidor se guardan en la base para que todos las vean.
+- La API está en un plan gratuito, que se duerme si nadie la usa un rato. Para que no tarde en despertar, un servicio externo la consulta cada 10 minutos (`/api/salud`).
+- El panel muestra lo que cambian otros celulares cada 15 segundos (no al instante).
+- «Mis turnos» muestra los turnos reservados desde ese celular: si el cliente borra los datos del navegador, los turnos siguen en pie, pero los tiene que cambiar o cancelar escribiendo al WhatsApp del local.
 
 **Próximos pasos**
 
-1. Hacer el servidor (API) que guarde y lea los datos en la base, con contraseña real para el panel, y conectar el sitio y el panel.
-2. En la API, controlar los topes de turnos y los números bloqueados, y limitar cuántas reservas se pueden intentar seguidas desde un mismo lugar.
+1. Que el dueño cargue a los barberos y les dé acceso al panel desde **Barberos**.
+2. Mandar los recordatorios por WhatsApp solos (hoy los manda el dueño con un toque).
 3. Confirmar con el dueño:
    - qué incluye «Barba» en los combos;
    - la calle que cruza con Constitución;
