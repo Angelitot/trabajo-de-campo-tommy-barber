@@ -9,6 +9,7 @@ La API (carpeta `servidor/`) conecta la página y el panel con la base de datos 
 ## Contenido
 
 - [Cómo funciona](#cómo-funciona)
+- [Velocidad](#velocidad)
 - [Seguridad](#seguridad)
 - [Direcciones](#direcciones)
 - [Variables de entorno](#variables-de-entorno)
@@ -37,6 +38,8 @@ flowchart LR
 | `cambios.js` | Guarda los cambios del panel (turnos, caja, stock, servicios, horario, barberos) en una sola transacción |
 | `clientes.js` | Fichas de clientes: cambio de número, fichas unidas, «son distintos» y números bloqueados |
 | `seguridad.js` | Contraseñas, tokens, códigos de turno y freno a los intentos de ingreso |
+| `cache.js` | Lo que se pide seguido y cambia poco, guardado en memoria (ver [Velocidad](#velocidad)) |
+| `prueba.js` | Datos de prueba del panel y «empezar de cero» |
 | `rutas/` | Las direcciones de la API: `publico.js` (página), `acceso.js` (ingreso) y `panel.js` (panel) |
 | `pruebas/` | Pruebas contra una base de verdad |
 
@@ -52,12 +55,21 @@ flowchart LR
 
 **Modo demostración.** Abriendo `index.html` desde la carpeta, en `localhost` o con `?demo` en la dirección, la página funciona como antes: datos de ejemplo en el navegador y el panel en `#panel` con el PIN 2121. Así se puede presentar sin servidor y las pruebas de siempre siguen andando.
 
+## Velocidad
+
+- **El sitio responde al instante.** Lo que pide la página de los clientes (servicios, barberos, horario, fotos y horarios ocupados) queda armado en la memoria del servidor. Cualquier pedido que guarda algo (una reserva, un cambio del panel) lo descarta, así nunca se muestra algo viejo.
+- **El horario, los barberos, los servicios y las fotos** quedan en memoria atados al número de versión de la base: mientras el dueño no los cambie, el servidor no los vuelve a leer. Una reserva hace la mitad de consultas que antes.
+- **Consultas a la vez.** Para abrir el panel y para las novedades, el servidor hace todas las consultas al mismo tiempo en vez de una por una.
+- **Conexiones abiertas.** Las conexiones con la base quedan abiertas 10 minutos: abrir una nueva (cifrada) es lo que más tarda.
+- **En el celular.** La página abre la conexión con la API mientras todavía se está cargando (`preconnect`), pide los horarios y «Mis turnos» a la vez y guarda lo último que recibió: la próxima vez muestra precios y horarios al instante y los actualiza apenas llega la respuesta.
+- **Que no se duerma.** En el plan gratuito, la API se duerme a los 15 minutos sin pedidos y despertarla tarda cerca de un minuto. Por eso un servicio externo pide `/api/salud` cada 10 minutos.
+
 ## Seguridad
 
 - **Contraseñas.** Se guarda solo su hash (scrypt, con sal). Tienen que tener al menos 10 caracteres, letras y números, no ser de las comunes y no llevar el usuario.
 - **Sesiones.** Al ingresar, el celular recibe un token; en la base se guarda solo su hash. La sesión dura 30 días desde el último uso; «Salir» la cierra en el servidor. Cambiar la contraseña cierra las sesiones de los otros celulares.
 - **Intentos de ingreso.** Después de 5 intentos fallidos con el mismo usuario (o 20 desde la misma conexión), hay que esperar 15 minutos.
-- **Permisos.** El dueño puede todo. Un barbero solo ve y cambia sus turnos (cobrar, no vino, cancelar, pasar después, avisos), anota clientes sin turno para él y deshace sus cobros. Lo revisa el servidor en cada pedido, no solo la página. Si el dueño quita a un barbero, su acceso se cierra.
+- **Permisos.** El dueño puede todo. Su cuenta está unida a su barbero (también corta), y a ese barbero no se lo puede quitar. Un barbero solo ve y cambia sus turnos (cobrar, no vino, cancelar, pasar después, avisos), anota clientes sin turno para él y deshace sus cobros. Lo revisa el servidor en cada pedido, no solo la página. Si el dueño quita a un barbero, su acceso se cierra.
 - **Turnos falsos.** El servidor aplica los mismos topes que la página: una persona (WhatsApp + nombre) tiene un turno pendiente a la vez, hasta 4 por número y hasta 4 por celular; los números bloqueados no reservan por la web. Además, cada conexión puede hacer hasta 12 reservas o cambios cada 15 minutos.
 - **Datos de los clientes.** La página de los clientes recibe los horarios ocupados sin nombres ni números. Solo el panel ve los datos de los clientes.
 - **Desde qué página.** Solo la página del local puede usar la API desde el navegador (CORS). Las respuestas van sin guardarse en caché, salvo las fotos.
@@ -97,6 +109,8 @@ Todas devuelven JSON. Los errores traen `{ error, mensaje }`: `error` es un cód
 | `POST /api/panel/cambios` | Todos | Lo que cambió en el panel (cada barbero, solo lo suyo) |
 | `PUT /api/panel/fotos/logo`, `/fachada`, `/galeria` | Dueño | Cambia las fotos (`DELETE` vuelve a la original) |
 | `POST /api/panel/clientes/numero`, `/unir`, `/distintos`, `/bloqueados` | Dueño | Cambios en las fichas de clientes (`DELETE /bloqueados/:wa` desbloquea) |
+| `POST /api/panel/prueba` | Dueño | Carga datos de prueba: un mes de clientes, turnos, caja y stock, solo en horas libres |
+| `POST /api/panel/empezar-de-cero` | Dueño | Con `{ confirmar: "BORRAR" }`: borra turnos, clientes, caja y stock. Quedan barberos, cuentas, fotos, servicios y horario |
 | `GET`, `POST /api/panel/cuentas`, `PUT /api/panel/cuentas/:id` | Dueño | Acceso de los barberos al panel: crear, nueva contraseña o quitar el acceso |
 
 ## Variables de entorno
@@ -125,14 +139,14 @@ La primera vez crea las tablas y carga los datos del local. Para usar la página
 
 ## Pruebas
 
-- **`servidor/pruebas/api.test.js`** (25 pruebas): crea una base nueva, levanta la API y prueba reservas, topes, horarios que no se ofrecen, Mis turnos con clave, ingreso, permisos de cada barbero, cambios simultáneos, «Pasar después», servicios, stock, fichas de clientes, fotos, novedades y contraseñas. Al final borra la base.
+- **`servidor/pruebas/api.test.js`** (29 pruebas): crea una base nueva, levanta la API y prueba reservas, topes, horarios que no se ofrecen, Mis turnos con clave, ingreso, permisos de cada barbero, cambios simultáneos, «Pasar después», servicios, stock, fichas de clientes, fotos, novedades, contraseñas, el dueño como barbero, los datos de prueba (que no se pisen turnos) y empezar de cero. Al final borra la base.
 
   ```
   cd servidor
   PRUEBAS_DB="postgres://usuario@localhost:5432/postgres" npm test
   ```
 
-- **`pruebas/probar_api.py`**: levanta la API y la página y las recorre en un navegador, como el cliente, el dueño (en dos celulares) y un barbero: reservar, cambiar, cancelar, topes, panel con contraseña, cobrar y deshacer en Atender, «Pasar después», cliente sin turno, caja, stock, horario, fichas, barberos y su acceso, fotos y salir. También sirve para probar la versión publicada (`publico/`).
+- **`pruebas/probar_api.py`**: levanta la API y la página y las recorre en un navegador, como el cliente, el dueño (en dos celulares) y un barbero: reservar, cambiar, cancelar, topes, panel con contraseña, cobrar y deshacer en Atender, «Pasar después», cliente sin turno, caja, stock, horario, fichas, barberos y su acceso, fotos, datos de prueba, empezar de cero, que la página se muestre aunque el servidor tarde, y salir. También sirve para probar la versión publicada (`publico/`).
 
   ```
   python pruebas/probar_api.py "postgres://usuario@localhost:5432/postgres"

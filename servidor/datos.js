@@ -186,10 +186,12 @@ export function filaAMovStock(r) {
 }
 export async function cargarStock(c) {
   const hoy = momentoPY().clave;
-  const productos = (await c.query('SELECT * FROM producto WHERE activo ORDER BY id')).rows.map(filaAProducto);
-  const movStock = (await c.query(
-    `SELECT s.*, p.ref AS producto_ref, p.nombre AS producto_nombre, p.unidad, p.unidad_plural FROM movimiento_stock s JOIN producto p ON p.id = s.producto_id
-     WHERE s.fecha_hora >= ($1::date - 62)::timestamp AT TIME ZONE 'America/Asuncion' ORDER BY s.fecha_hora, s.id`, [hoy])).rows.map(filaAMovStock);
+  const [productos, movStock] = await Promise.all([
+    c.query('SELECT * FROM producto WHERE activo ORDER BY id').then((x) => x.rows.map(filaAProducto)),
+    c.query(
+      `SELECT s.*, p.ref AS producto_ref, p.nombre AS producto_nombre, p.unidad, p.unidad_plural FROM movimiento_stock s JOIN producto p ON p.id = s.producto_id
+       WHERE s.fecha_hora >= ($1::date - 62)::timestamp AT TIME ZONE 'America/Asuncion' ORDER BY s.fecha_hora, s.id`, [hoy]).then((x) => x.rows.map(filaAMovStock))
+  ]);
   return { productos, movStock };
 }
 
@@ -199,28 +201,37 @@ export function claveAlias(telefono, nombreN) { return telefono ? 't' + telefono
 
 export async function cargarRegistro(c, { soloIds } = {}) {
   const r = { v: 1, sig: 1, ids: {}, fichas: {}, distintos: [], bloqueados: [] };
-  const alias = soloIds
-    ? (await c.query('SELECT telefono, nombre_normalizado, cliente_id FROM cliente_alias WHERE cliente_id = ANY($1::int[])', [soloIds])).rows
-    : (await c.query('SELECT telefono, nombre_normalizado, cliente_id FROM cliente_alias')).rows;
-  alias.forEach((a) => { r.ids[claveAlias(a.telefono, a.nombre_normalizado)] = a.cliente_id; });
-  r.sig = ((await c.query('SELECT coalesce(max(id), 0) + 1 AS sig FROM cliente')).rows[0].sig);
-  if (soloIds) return r;
-  const clientes = (await c.query(
-    `SELECT id, telefono, telefono_fijo, telefono_cambiado_en FROM cliente c
-     WHERE telefono_fijo OR EXISTS (SELECT 1 FROM cliente_telefono_anterior a WHERE a.cliente_id = c.id)
-        OR EXISTS (SELECT 1 FROM union_clientes u WHERE u.cliente_id = c.id)`)).rows;
-  const anteriores = (await c.query('SELECT cliente_id, telefono, hasta FROM cliente_telefono_anterior ORDER BY id')).rows;
-  const unidos = (await c.query('SELECT cliente_id, cliente_unido_id FROM union_clientes ORDER BY id')).rows;
-  clientes.forEach((cl) => {
+  const filasAlias = soloIds
+    ? c.query('SELECT telefono, nombre_normalizado, cliente_id FROM cliente_alias WHERE cliente_id = ANY($1::int[])', [soloIds])
+    : c.query('SELECT telefono, nombre_normalizado, cliente_id FROM cliente_alias');
+  const sig = c.query('SELECT coalesce(max(id), 0) + 1 AS sig FROM cliente');
+  if (soloIds) {
+    (await filasAlias).rows.forEach((a) => { r.ids[claveAlias(a.telefono, a.nombre_normalizado)] = a.cliente_id; });
+    r.sig = (await sig).rows[0].sig;
+    return r;
+  }
+  // Todo a la vez
+  const [alias, siguiente, clientes, anteriores, unidos, distintos, bloqueados] = await Promise.all([
+    filasAlias, sig,
+    c.query(`SELECT id, telefono, telefono_fijo, telefono_cambiado_en FROM cliente c
+       WHERE telefono_fijo OR EXISTS (SELECT 1 FROM cliente_telefono_anterior a WHERE a.cliente_id = c.id)
+          OR EXISTS (SELECT 1 FROM union_clientes u WHERE u.cliente_id = c.id)`),
+    c.query('SELECT cliente_id, telefono, hasta FROM cliente_telefono_anterior ORDER BY id'),
+    c.query('SELECT cliente_id, cliente_unido_id FROM union_clientes ORDER BY id'),
+    c.query('SELECT cliente_a, cliente_b FROM clientes_distintos ORDER BY marcado_en'),
+    c.query('SELECT telefono, motivo, bloqueado_en FROM numero_bloqueado ORDER BY bloqueado_en')
+  ]);
+  alias.rows.forEach((a) => { r.ids[claveAlias(a.telefono, a.nombre_normalizado)] = a.cliente_id; });
+  r.sig = siguiente.rows[0].sig;
+  clientes.rows.forEach((cl) => {
     const f = { tel: cl.telefono_fijo && cl.telefono ? cl.telefono : '', anteriores: [], unidos: [] };
     if (cl.telefono_cambiado_en) f.cambioTel = ms(cl.telefono_cambiado_en);
-    anteriores.filter((a) => a.cliente_id === cl.id).forEach((a) => f.anteriores.push({ wa: a.telefono, hasta: ms(a.hasta) }));
-    unidos.filter((u) => u.cliente_id === cl.id).forEach((u) => f.unidos.push(u.cliente_unido_id));
+    anteriores.rows.filter((a) => a.cliente_id === cl.id).forEach((a) => f.anteriores.push({ wa: a.telefono, hasta: ms(a.hasta) }));
+    unidos.rows.filter((u) => u.cliente_id === cl.id).forEach((u) => f.unidos.push(u.cliente_unido_id));
     r.fichas[cl.id] = f;
   });
-  r.distintos = (await c.query('SELECT cliente_a, cliente_b FROM clientes_distintos ORDER BY marcado_en')).rows.map((d) => d.cliente_a + '-' + d.cliente_b);
-  r.bloqueados = (await c.query('SELECT telefono, motivo, bloqueado_en FROM numero_bloqueado ORDER BY bloqueado_en')).rows
-    .map((b) => ({ wa: b.telefono, motivo: b.motivo || '', en: ms(b.bloqueado_en) }));
+  r.distintos = distintos.rows.map((d) => d.cliente_a + '-' + d.cliente_b);
+  r.bloqueados = bloqueados.rows.map((b) => ({ wa: b.telefono, motivo: b.motivo || '', en: ms(b.bloqueado_en) }));
   return r;
 }
 

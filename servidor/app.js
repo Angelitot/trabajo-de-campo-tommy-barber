@@ -8,6 +8,7 @@ import { rutasPublicas } from './rutas/publico.js';
 import { rutasAcceso, autenticar } from './rutas/acceso.js';
 import { rutasPanel } from './rutas/panel.js';
 import { crearFreno } from './seguridad.js';
+import { invalidar } from './cache.js';
 
 // opciones: { pool, origenes: ['https://…'], base: 'https://api…' (para las direcciones de las fotos), origenesLocales, sinLimites }
 export function crearApp(opciones) {
@@ -33,6 +34,11 @@ export function crearApp(opciones) {
     next();
   });
   app.use(express.json({ limit: '3mb' }));
+  // Todo pedido que guarda algo descarta lo armado en memoria (horarios ocupados), así nadie ve algo viejo
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') res.on('finish', invalidar);
+    next();
+  });
   app.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
   app.get('/api/salud', async (req, res) => {

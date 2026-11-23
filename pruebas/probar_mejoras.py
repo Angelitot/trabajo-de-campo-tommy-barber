@@ -48,7 +48,6 @@ async def recorrido(b, nombre, vp, mobile):
     await pg.click('[data-reservar="combo-4"]')
     await pg.click('.rv-dia[data-k="1"]')
     await pg.click('.rv-hora:not([disabled])')
-    await pg.click('#rv-seguir')
     await pg.fill('#rv-nombre', 'Juan Prueba')
     await pg.fill('#rv-tel', '0981 555 214')
     await pg.click('#rv-seguir')

@@ -66,10 +66,8 @@ K2, F2 = DIAS[1]
 
 async def reservar(pg, k, m, nombre, tel, servicio='corte', confirmar=True):
     await pg.click(f'.rv-servicio[data-id="{servicio}"]')
-    await pg.click('#reserva [data-accion="seguir"]')
     await pg.click(f'[data-accion="dia"][data-k="{k}"]')
     await pg.click(f'[data-accion="hora"][data-k="{k}"][data-m="{m}"]')
-    await pg.click('#reserva [data-accion="seguir"]')
     await pg.fill('#rv-nombre', nombre)
     await pg.fill('#rv-tel', tel)
     if confirmar:
@@ -182,7 +180,6 @@ async def recorrido():
         await pg2.goto(SITIO_URL)
         await pg2.wait_for_selector('.rv-servicio')
         await pg2.click('.rv-servicio[data-id="corte"]')
-        await pg2.click('#reserva [data-accion="seguir"]')
         await pg2.click(f'[data-accion="dia"][data-k="{K1}"]')
         check(await pg2.locator(f'[data-accion="hora"][data-m="540"]').is_disabled(), 'otro celular ve las 09:00 ocupadas')
         check('Derlis' not in await pg2.content(), 'otro celular no ve el nombre de nadie')
@@ -245,6 +242,9 @@ async def recorrido():
         await pd.fill('#bb-nombre', 'Barbero 2')
         await pd.click('#bb-guardar')
         await pd.wait_for_selector('#bb-n-b2')
+        b1 = pd.locator('.bb-item', has=pd.locator('#bb-n-b1'))
+        check('Dueño' in await b1.inner_text() and 'Es el dueño' in await b1.inner_text(), 'el barbero del dueño dice que es el dueño y entra con su cuenta')
+        check(await pd.locator('[data-accion="bb-quitar"][data-id="b1"]').count() == 0, 'al dueño no se lo puede quitar de los barberos')
         check(True, 'barbero nuevo con el N.º que da la base (b2)')
         await pd.wait_for_selector('[data-accion="cuenta-abrir"][data-id="b2"]')
         await pd.click('[data-accion="cuenta-abrir"][data-id="b2"]')
@@ -276,11 +276,9 @@ async def recorrido():
         await pg2.goto(SITIO_URL)
         await pg2.wait_for_selector('.rv-servicio')
         await pg2.click('.rv-servicio[data-id="corte"]')
-        await pg2.click('#reserva [data-accion="seguir"]')
         await pg2.click('[data-accion="barbero"][data-id="b2"]')
         await pg2.click(f'[data-accion="dia"][data-k="{K1}"]')
         await pg2.click(f'[data-accion="hora"][data-k="{K1}"][data-m="540"]')
-        await pg2.click('#reserva [data-accion="seguir"]')
         await pg2.fill('#rv-nombre', 'Iván Rolón')
         await pg2.fill('#rv-tel', '0985 444 555')
         await pg2.click('#reserva [data-accion="seguir"]')
@@ -403,7 +401,6 @@ async def recorrido():
         await pg2.goto(SITIO_URL)
         await pg2.wait_for_selector('.rv-servicio')
         await pg2.click('.rv-servicio[data-id="corte"]')
-        await pg2.click('#reserva [data-accion="seguir"]')
         check(await pg2.locator(f'[data-accion="dia"][data-k="{K2}"]').is_disabled() and 'Feriado' in await pg2.inner_text('#lista-horarios'), 'un día cerrado en el panel se cierra en la página')
 
         await vista(pd, 'clientes')
@@ -424,6 +421,46 @@ async def recorrido():
 
         await vista(pd, 'reportes')
         check('Reportes' in await pd.inner_text('#pa-titulo'), 'los reportes se arman con los datos de la base')
+
+        # Datos de prueba y empezar de cero
+        await pd.click('[data-accion="prueba-abrir"]')
+        await pd.mouse.move(5, 5)
+        await pd.locator('.prueba').screenshot(path=str(OUT / 'api-datos-prueba.png'))
+        await pd.click('[data-accion="prueba-cargar"]')
+        await pd.wait_for_selector('.aviso-ok:has-text("Se cargaron los datos de prueba")', timeout=30000)
+        d = datos()
+        check(len(d['turnos']) > 100 and len(d['productos']) >= 10 and any(m['cat'] == 'gasto' for m in d['mov']), f"datos de prueba cargados ({len(d['turnos'])} turnos)")
+        for v in ['atender', 'hoy', 'turnos', 'caja', 'stock', 'clientes', 'reportes']:
+            t0 = time.time()
+            await vista(pd, v)
+            ms_vista = (time.time() - t0) * 1000
+            check(ms_vista < 1500, f'con datos de prueba, {v} se abre rápido ({ms_vista:.0f} ms)')
+        await pd.mouse.move(5, 5)
+        await pd.screenshot(path=str(OUT / 'api-reportes-prueba.png'), full_page=True)
+        await pd.click('[data-accion="prueba-abrir"]')
+        await pd.click('[data-accion="prueba-borrar"]')
+        await pd.click('[data-accion="prueba-borrar-si"]')
+        await pd.wait_for_selector('.aviso-ok:has-text("quedó en cero")', timeout=30000)
+        d = datos()
+        check(not d['turnos'] and not d['mov'] and not d['productos'] and not d['registro']['ids'], 'empezar de cero deja turnos, caja, stock y clientes vacíos')
+        check(any(b['nombre'] == 'Barbero 2' for b in d['config']['barberos']) and d['fotos']['logo'], 'quedan los barberos y las fotos')
+        check(api('POST', '/api/acceso/ingresar', {'usuario': 'tommy', 'clave': DUENO[1]})[0] == 200, 'quedan las cuentas')
+
+        # La página aparece al instante con lo último guardado, aunque el servidor tarde
+        lento = await contexto()
+        pl = await pagina(lento)
+        await pl.goto(SITIO_URL)
+        await pl.wait_for_selector('.rv-servicio')
+        async def demorar(route):
+            await asyncio.sleep(4)
+            await route.continue_()
+        await pl.route('**/api/sitio', demorar)
+        t0 = time.time()
+        await pl.reload()
+        await pl.wait_for_selector('.rv-servicio')
+        espera = (time.time() - t0) * 1000
+        check(espera < 2500, f'con el servidor lento, la reserva aparece igual con lo guardado ({espera:.0f} ms)')
+        await lento.close()
 
         # Salir
         await pd.click('[data-accion="salir"]')

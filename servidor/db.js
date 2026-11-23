@@ -7,7 +7,7 @@ pg.types.setTypeParser(1082, (v) => v);
 pg.types.setTypeParser(20, (v) => parseInt(v, 10));
 
 // url: la dirección de la base (DATABASE_URL). ca: el certificado de la base (DATABASE_CA), si se tiene.
-export function crearPool(url, { ca, max = 5 } = {}) {
+export function crearPool(url, { ca, max = 8 } = {}) {
   if (!url) throw new Error('Falta DATABASE_URL');
   const u = new URL(url);
   const modo = u.searchParams.get('sslmode');
@@ -21,7 +21,8 @@ export function crearPool(url, { ca, max = 5 } = {}) {
       console.warn('Aviso: la conexión a la base va cifrada, pero sin revisar su certificado (falta DATABASE_CA).');
     }
   }
-  const pool = new pg.Pool({ connectionString: u.toString(), ssl, max, idleTimeoutMillis: 30000, connectionTimeoutMillis: 15000 });
+  // Las conexiones quedan abiertas un buen rato: abrir una nueva con la base (cifrada) tarda
+  const pool = new pg.Pool({ connectionString: u.toString(), ssl, max, idleTimeoutMillis: 600000, connectionTimeoutMillis: 15000, keepAlive: true });
   pool.on('error', (e) => console.error('Error de la base (conexión en espera):', e.message));
   return pool;
 }

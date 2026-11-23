@@ -13,10 +13,11 @@ Trabajo de campo: diseño web para **Tommy Barber**, barbería de Quiindy (Const
   - **Stock:** insumos y productos para vender; el dueño los carga, resta lo que usa o vende y suma lo que compra.
   - **Servicios:** el dueño cambia el precio y la duración de cada servicio o combo, agrega servicios nuevos, deja de ofrecer los que ya no hace o vuelve a la lista original del local.
   - **Horario:** cerrar días u horas (para todo el local o para un barbero), o abrir con otro horario un día puntual; el sitio deja de ofrecer esos turnos y avisa el cambio.
-  - **Barberos:** agregar, editar y quitar barberos, cada uno con sus días y horas.
+  - **Barberos:** agregar, editar y quitar barberos, cada uno con sus días y horas, y darles acceso al panel. El dueño también es barbero: entra con su misma cuenta.
   - **Clientes:** ficha de cada cliente con su N.º (visitas, gasto, faltas, historial), aviso en Atender cuando alguien suele faltar, posibles repetidos para unir, cambio de número sin perder el historial, y números bloqueados para reservar por la web.
   - **Reportes:** días y horas con más clientes, ganancia mes a mes, faltas y cancelaciones, y lo de cada barbero.
   - **Fotos:** cambiar el logo, la foto del local y las fotos de cortes de la página.
+  - **Datos de prueba:** cargar un mes de turnos, clientes, caja y stock para probar el sistema, y **Empezar de cero** para borrarlos.
 
 La documentación completa del trabajo (relevamiento, requerimientos, diseño, cómo está hecho el sistema, pruebas y capturas) está en [docs/DOCUMENTACION.md](docs/DOCUMENTACION.md), y el diseño de la base de datos en [docs/BASE_DE_DATOS.md](docs/BASE_DE_DATOS.md).
 
@@ -36,7 +37,9 @@ Abriendo `index.html` desde la carpeta, la página funciona en **modo demostraci
 
 ## Cómo probarlo en la presentación
 
-En modo demostración (en la página publicada no hay datos de ejemplo ni «Reiniciar»):
+En la página publicada, el dueño carga un mes de datos de prueba desde el panel (**Datos de prueba**, abajo del menú) y los borra con **Empezar de cero** antes de usarla de verdad.
+
+En modo demostración:
 
 1. En el sitio, reservá un turno para mañana con tu propio número de WhatsApp.
 2. Arriba aparece «Tenés turno…». En **Mis turnos** se ve el turno y se puede cambiar de día u hora o cancelar.

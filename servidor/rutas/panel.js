@@ -5,10 +5,12 @@ import { enTransaccion } from '../db.js';
 import { aplicarCambios } from '../cambios.js';
 import { bloquearNumero, cambiarNumero, desbloquearNumero, marcarDistintos, unirClientes } from '../clientes.js';
 import {
-  COLUMNAS_TURNO, ErrorApi, SQL_MOV, cargarConfig, cargarFotos, cargarRegistro, cargarStock, clavesDeTurnos, conflicto, filaAMov, filaATurno, hoyPY,
+  COLUMNAS_TURNO, ErrorApi, SQL_MOV, cargarFotos, cargarRegistro, cargarStock, clavesDeTurnos, conflicto, filaAMov, filaATurno, hoyPY,
   idBarbero, idsDeClaves, invalido, subirVersion, sumarDias, versiones, zRef
 } from '../datos.js';
 import { hashClave, problemaClave, usuarioValido } from '../seguridad.js';
+import { config } from '../cache.js';
+import { cargarDatosDePrueba, empezarDeCero } from '../prueba.js';
 import { datosUsuario, soloDueno } from './acceso.js';
 
 export const DIAS_PANEL = 200;   // turnos y caja hacia atrás (los reportes llegan a 6 meses)
@@ -30,72 +32,57 @@ export function rutasPanel(ctx) {
     return r;
   }
 
+  // Configuración del panel: sale de lo guardado en memoria si la versión de la base es la misma
+  async function configPanel(version, req) {
+    const cfg = await config(ctx.pool, version, base(req));
+    return { config: { barberos: cfg.barberos, servicios: cfg.servicios, historial: cfg.historial, bloqueos: cfg.bloqueos }, fotos: cfg.fotos };
+  }
+  // La hora de la base y las versiones, en una sola consulta (la hora se toma antes de leer lo demás)
+  async function ahoraYVersiones() {
+    const r = (await ctx.pool.query("SELECT now() AS t, json_object_agg(parte, version) AS v FROM version_datos")).rows[0];
+    return { ahora: r.t.getTime(), versiones: r.v };
+  }
+
   r.get('/datos', async (req, res) => {
-    const c = await ctx.pool.connect();
-    try {
-      // Todo desde la misma foto de la base
-      await c.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-      const ahora = await ahoraDb(c);
-      const desde = sumarDias(hoyPY(), -DIAS_PANEL);
-      const at = [desde];
-      const turnos = (await c.query(`SELECT ${COLUMNAS_TURNO} FROM turno WHERE fecha >= $1${filtroBarbero(req, 'barbero_id', at)} ORDER BY fecha, hora, id`, at)).rows.map(filaATurno);
-      const am = [desde];
-      const mov = (await c.query(`${SQL_MOV} WHERE m.anulado_en IS NULL AND m.fecha_hora >= ($1::date)::timestamp AT TIME ZONE 'America/Asuncion'${filtroBarbero(req, 'm.barbero_id', am)} ORDER BY m.fecha_hora, m.id`, am)).rows.map(filaAMov);
-      const datos = {
-        ahora, yo: req.yo, versiones: await versiones(c), config: await cargarConfig(c), turnos, mov,
-        registro: await registroPara(c, req, turnos)
-      };
-      if (req.esDueno) {
-        datos.fotos = await cargarFotos(c, base(req));
-        Object.assign(datos, await cargarStock(c));
-      }
-      await c.query('COMMIT');
-      res.json(datos);
-    } catch (e) {
-      await c.query('ROLLBACK').catch(() => {});
-      throw e;
-    } finally {
-      c.release();
-    }
+    const c = ctx.pool;
+    const { ahora, versiones: v } = await ahoraYVersiones();
+    const desde = sumarDias(hoyPY(), -DIAS_PANEL);
+    const at = [desde], am = [desde];
+    // Las consultas van todas a la vez
+    const [turnos, mov, cfg, stock] = await Promise.all([
+      c.query(`SELECT ${COLUMNAS_TURNO} FROM turno WHERE fecha >= $1${filtroBarbero(req, 'barbero_id', at)} ORDER BY fecha, hora, id`, at).then((x) => x.rows.map(filaATurno)),
+      c.query(`${SQL_MOV} WHERE m.anulado_en IS NULL AND m.fecha_hora >= ($1::date)::timestamp AT TIME ZONE 'America/Asuncion'${filtroBarbero(req, 'm.barbero_id', am)} ORDER BY m.fecha_hora, m.id`, am).then((x) => x.rows.map(filaAMov)),
+      configPanel(v.config, req),
+      req.esDueno ? cargarStock(c) : null
+    ]);
+    const datos = { ahora, yo: req.yo, versiones: v, config: cfg.config, fotos: cfg.fotos, turnos, mov, registro: await registroPara(c, req, turnos) };
+    if (stock) Object.assign(datos, stock);
+    res.json(datos);
   });
 
   // Lo que cambió desde la última vez (otros celulares, reservas de la página)
   r.get('/novedades', async (req, res) => {
     const q = z.object({ desde: z.coerce.number().int().min(0), config: z.coerce.number().int().optional(), registro: z.coerce.number().int().optional(), stock: z.coerce.number().int().optional() }).parse(req.query);
-    const c = await ctx.pool.connect();
-    try {
-      await c.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-      const ahora = await ahoraDb(c);
-      // Se pide un minuto de más por si una transacción terminó tarde
-      const desde = new Date(Math.max(0, q.desde - 60000));
-      const at = [desde];
-      const turnos = (await c.query(`SELECT ${COLUMNAS_TURNO} FROM turno WHERE actualizado_en > $1${filtroBarbero(req, 'barbero_id', at)} ORDER BY fecha, hora, id`, at)).rows.map(filaATurno);
-      const r2 = { ahora, turnos, fuera: [], borrados: [], mov: [], movAnulados: [] };
-      if (!req.esDueno) {
-        r2.fuera = (await c.query('SELECT codigo FROM turno WHERE actualizado_en > $1 AND barbero_id <> $2', [desde, idBarbero(req.yo.barbero)])).rows.map((x) => x.codigo);
-      }
-      r2.borrados = (await c.query('SELECT codigo FROM turno_borrado WHERE borrado_en > $1', [desde])).rows.map((x) => x.codigo);
-      const am = [desde];
-      (await c.query(`${SQL_MOV} WHERE m.actualizado_en > $1${filtroBarbero(req, 'm.barbero_id', am)}`, am)).rows.forEach((m) => {
-        if (m.anulado_en) r2.movAnulados.push(m.ref); else r2.mov.push(filaAMov(m));
-      });
-      const v = await versiones(c);
-      r2.versiones = v;
-      if (q.config !== v.config) {
-        r2.config = await cargarConfig(c);
-        if (req.esDueno) r2.fotos = await cargarFotos(c, base(req));
-      }
-      if (req.esDueno && q.registro !== v.registro) r2.registro = await cargarRegistro(c);
-      else r2.clientes = await idsDeClaves(c, clavesDeTurnos(turnos));
-      if (req.esDueno && q.stock !== v.stock) Object.assign(r2, await cargarStock(c));
-      await c.query('COMMIT');
-      res.json(r2);
-    } catch (e) {
-      await c.query('ROLLBACK').catch(() => {});
-      throw e;
-    } finally {
-      c.release();
-    }
+    const c = ctx.pool;
+    const { ahora, versiones: v } = await ahoraYVersiones();
+    // Se pide un minuto de más por si una transacción terminó tarde
+    const desde = new Date(Math.max(0, q.desde - 60000));
+    const at = [desde], am = [desde];
+    const [turnos, fuera, borrados, movs, cfg, registro, stock] = await Promise.all([
+      c.query(`SELECT ${COLUMNAS_TURNO} FROM turno WHERE actualizado_en > $1${filtroBarbero(req, 'barbero_id', at)} ORDER BY fecha, hora, id`, at).then((x) => x.rows.map(filaATurno)),
+      req.esDueno ? [] : c.query('SELECT codigo FROM turno WHERE actualizado_en > $1 AND barbero_id <> $2', [desde, idBarbero(req.yo.barbero)]).then((x) => x.rows.map((y) => y.codigo)),
+      c.query('SELECT codigo FROM turno_borrado WHERE borrado_en > $1', [desde]).then((x) => x.rows.map((y) => y.codigo)),
+      c.query(`${SQL_MOV} WHERE m.actualizado_en > $1${filtroBarbero(req, 'm.barbero_id', am)}`, am).then((x) => x.rows),
+      q.config !== v.config ? configPanel(v.config, req) : null,
+      req.esDueno && q.registro !== v.registro ? cargarRegistro(c) : null,
+      req.esDueno && q.stock !== v.stock ? cargarStock(c) : null
+    ]);
+    const r2 = { ahora, versiones: v, turnos, fuera, borrados, mov: [], movAnulados: [] };
+    movs.forEach((m) => { if (m.anulado_en) r2.movAnulados.push(m.ref); else r2.mov.push(filaAMov(m)); });
+    if (cfg) { r2.config = cfg.config; r2.fotos = cfg.fotos; }
+    if (registro) r2.registro = registro; else r2.clientes = await idsDeClaves(c, clavesDeTurnos(turnos));
+    if (stock) Object.assign(r2, stock);
+    res.json(r2);
   });
 
   // Cambios hechos en el panel
@@ -105,7 +92,7 @@ export function rutasPanel(ctx) {
     await (async () => {
       const c = ctx.pool;
       extra.versiones = await versiones(c);
-      if (out.partes.includes('config')) extra.config = await cargarConfig(c);
+      if (out.partes.includes('config')) extra.config = (await configPanel(extra.versiones.config, req)).config;
       if (out.partes.includes('stock') && req.esDueno) Object.assign(extra, await cargarStock(c));
       extra.clientes = await idsDeClaves(c, clavesDeTurnos(out.turnos));
     })();
@@ -229,6 +216,23 @@ export function rutasPanel(ctx) {
     const wa = z.string().regex(/^5959\d{8}$/).parse(req.params.wa);
     await enTransaccion(ctx.pool, (c) => desbloquearNumero(c, wa));
     await responderRegistro(res);
+  });
+
+  // ---------- Datos de prueba y empezar de cero (solo el dueño) ----------
+  r.post('/prueba', soloDueno, async (req, res) => {
+    const resumen = await enTransaccion(ctx.pool, async (c) => {
+      await c.query('SELECT pg_advisory_xact_lock(727003)');   // de a uno
+      return cargarDatosDePrueba(c);
+    });
+    res.json({ ok: true, resumen });
+  });
+  r.post('/empezar-de-cero', soloDueno, async (req, res) => {
+    z.object({ confirmar: z.literal('BORRAR') }).parse(req.body);
+    await enTransaccion(ctx.pool, async (c) => {
+      await c.query('SELECT pg_advisory_xact_lock(727003)');
+      await empezarDeCero(c);
+    });
+    res.json({ ok: true });
   });
 
   // ---------- Cuentas de los barberos (solo el dueño) ----------
