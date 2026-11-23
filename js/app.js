@@ -941,19 +941,25 @@
       var f = fechaDe(clave);
       var wd = f.getUTCDay();
       var tramos = horasDe(clave);
-      var slots = [];
+      var slots = [], paso0 = false;
       tramos.forEach(function (tr) {
         for (var m = tr[0]; m + dur <= tr[1]; m += PASO) {
-          if (k === 0 && m < h.min + ANTICIPACION) continue;
           // Solo se muestran las horas en que trabaja alguno de los barberos elegidos
           if (!cands.some(function (b) { return trabajaA(b, clave, m, dur); })) continue;
+          // Hoy, las horas que ya pasaron no se ofrecen (si se trabajaba, el día dice «ya no hay»)
+          if (k === 0 && m < h.min + ANTICIPACION) { paso0 = true; continue; }
           slots.push({ m: m, libre: !!elegirBarbero(cands, clave, m, dur, otros) });
         }
       });
       lista.push({ k: k, wd: wd, clave: clave, d: f.getUTCDate(), mo: f.getUTCMonth(), slots: slots, libres: slots.filter(function (s) { return s.libre; }).length,
-        cerrado: tramos.length === 0, noViene: tramos.length > 0 && slots.length === 0 });
+        cerrado: tramos.length === 0, terminado: paso0 && slots.length === 0, noViene: !paso0 && tramos.length > 0 && slots.length === 0 });
     }
     var diaIdx = R.diaIdx;
+    // Al cambiar un turno, se abre en el día que tenía
+    if (diaIdx == null && cambio) {
+      var suyo = lista.find(function (x) { return x.clave === cambio.fecha; });
+      if (suyo && suyo.libres > 0) diaIdx = suyo.k;
+    }
     if (diaIdx == null || !lista[diaIdx] || lista[diaIdx].libres === 0) {
       var primero = lista.find(function (x) { return x.libres > 0; });
       diaIdx = primero ? primero.k : 0;
@@ -1020,8 +1026,8 @@
         var el = x.k === v.dia.k;
         var bloq = x.libres === 0;
         var nota = x.k === 0 ? 'hoy' : (x.k === 1 ? 'mañana' : '');
-        if (x.cerrado) nota = 'cerrado'; else if (x.noViene) nota = 'no atiende'; else if (bloq) nota = 'sin lugar';
-        var aria = DIAS[x.wd] + ' ' + x.d + ' de ' + MESES[x.mo] + (x.cerrado ? ', cerrado' : x.noViene ? ', ' + nombreBarbero(R.barbero) + ' no atiende' : (bloq ? ', sin lugar' : ', ' + plural(x.libres, 'horario libre', 'horarios libres')));
+        if (x.cerrado) nota = 'cerrado'; else if (x.terminado) nota = 'ya no hay'; else if (x.noViene) nota = 'no atiende'; else if (bloq) nota = 'sin lugar';
+        var aria = DIAS[x.wd] + ' ' + x.d + ' de ' + MESES[x.mo] + (x.cerrado ? ', cerrado' : x.terminado ? ', ya no quedan horarios hoy' : x.noViene ? ', ' + nombreBarbero(R.barbero) + ' no atiende' : (bloq ? ', sin lugar' : ', ' + plural(x.libres, 'horario libre', 'horarios libres')));
         return '<button type="button" class="rv-dia' + (el ? ' elegido' : '') + '" data-accion="dia" data-k="' + x.k + '" data-foco="d-' + x.k + '" aria-pressed="' + el + '" aria-label="' + aria + '"' + (bloq ? ' disabled' : '') + '>' +
           '<span class="rv-dia-sem">' + SEM[x.wd] + '</span><span class="rv-dia-num condensada">' + x.d + '</span><span class="rv-dia-nota">' + nota + '</span></button>';
       }).join('');
@@ -3019,7 +3025,7 @@
     BLOQ.push(b);
     guardarBloqueos();
     var afuera = turnosAfuera(BLOQ, b.fecha, b.hasta || b.fecha).length;
-    P.avisoHorario = 'Guardaste: ' + fechasBloqueo(b).replace(/^D/, 'd') + ', ' + minus(textoBloqueo(b)) + '.' + (afuera ? ' Quedaron ' + plural(afuera, 'turno', 'turnos') + ' afuera: avisales desde la lista.' : ' El sitio ya no ofrece esos horarios.');
+    P.avisoHorario = 'Guardaste: ' + fechasBloqueo(b).replace(/^D/, 'd') + ', ' + (b.barbero ? textoBloqueo(b) : minus(textoBloqueo(b))) + '.' + (afuera ? ' Quedaron ' + plural(afuera, 'turno', 'turnos') + ' afuera: avisales desde la lista.' : ' El sitio ya no ofrece esos horarios.');
     P.hz = hzVacio(P.hz.tipo);
     actualizarSitioHorario();
     return true;
