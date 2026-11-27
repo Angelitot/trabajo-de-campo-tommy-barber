@@ -60,7 +60,7 @@ flowchart LR
 - **El sitio responde al instante.** Lo que pide la página de los clientes (servicios, barberos, horario, fotos y horarios ocupados) queda armado en la memoria del servidor. Cualquier pedido que guarda algo (una reserva, un cambio del panel) lo descarta, así nunca se muestra algo viejo.
 - **El horario, los barberos, los servicios y las fotos** quedan en memoria atados al número de versión de la base: mientras el dueño no los cambie, el servidor no los vuelve a leer. Una reserva hace la mitad de consultas que antes.
 - **Consultas a la vez.** Para abrir el panel y para las novedades, el servidor hace todas las consultas al mismo tiempo en vez de una por una.
-- **Conexiones abiertas.** Las conexiones con la base quedan abiertas 10 minutos: abrir una nueva (cifrada) es lo que más tarda.
+- **Conexiones con la base.** Hasta 4 a la vez. Las que no se usan se cierran a los 5 minutos y ninguna vive más de 15, porque la base tiene 1 GB de memoria y cada conexión abierta la va ocupando; tampoco usan JIT, que en consultas tan chicas solo gasta memoria.
 - **En el celular.** La página abre la conexión con la API mientras todavía se está cargando (`preconnect`), pide los horarios y «Mis turnos» a la vez y guarda lo último que recibió: la próxima vez muestra precios y horarios al instante y los actualiza apenas llega la respuesta.
 - **Que no se duerma.** En el plan gratuito, la API se duerme a los 15 minutos sin pedidos y despertarla tarda cerca de un minuto. Por eso un servicio externo pide `/api/salud` cada 10 minutos.
 
